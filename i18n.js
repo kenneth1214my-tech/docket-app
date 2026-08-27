@@ -49,6 +49,7 @@
       col_currency: "Currency",
       col_total_value: "Total value (active)",
       value_empty: "No active contracts with a value yet.",
+      portfolio_title: "Portfolio overview",
 
       empty_dash_title: "No contracts yet",
       empty_dash_body: "Add your first contract to see expiry alerts, risk breakdowns and value exposure here — or load sample data to see how it looks first.",
@@ -162,6 +163,7 @@
       col_currency: "币种",
       col_total_value: "生效合同总额",
       value_empty: "暂无带金额的生效合同。",
+      portfolio_title: "合同组合概览",
 
       empty_dash_title: "暂无合同",
       empty_dash_body: "添加您的第一份合同即可查看到期提醒、风险分布和金额统计——或先加载示例数据看看效果。",
@@ -275,6 +277,7 @@
       col_currency: "Mata Wang",
       col_total_value: "Jumlah nilai (aktif)",
       value_empty: "Tiada kontrak aktif dengan nilai lagi.",
+      portfolio_title: "Gambaran keseluruhan portfolio",
 
       empty_dash_title: "Belum ada kontrak",
       empty_dash_body: "Tambah kontrak pertama anda untuk melihat amaran luput, pecahan risiko dan pendedahan nilai di sini — atau muatkan data contoh dahulu.",
@@ -388,6 +391,7 @@
       col_currency: "통화",
       col_total_value: "총 금액 (진행 중)",
       value_empty: "금액이 있는 진행 중 계약이 아직 없습니다.",
+      portfolio_title: "포트폴리오 개요",
 
       empty_dash_title: "등록된 계약이 없습니다",
       empty_dash_body: "첫 계약을 추가하면 만료 경보, 위험도 분석, 금액 현황을 확인할 수 있습니다 — 먼저 샘플 데이터로 화면을 살펴볼 수도 있습니다.",
@@ -501,6 +505,7 @@
       col_currency: "通貨",
       col_total_value: "合計金額（有効）",
       value_empty: "金額のある有効な契約はまだありません。",
+      portfolio_title: "ポートフォリオ概要",
 
       empty_dash_title: "契約がまだありません",
       empty_dash_body: "最初の契約を追加すると、満了アラート・リスク分布・金額の状況がここに表示されます。まずはサンプルデータで画面を確認することもできます。",
@@ -614,6 +619,7 @@
       col_currency: "Mata Uang",
       col_total_value: "Total nilai (aktif)",
       value_empty: "Belum ada kontrak aktif dengan nilai.",
+      portfolio_title: "Ikhtisar portofolio",
 
       empty_dash_title: "Belum ada kontrak",
       empty_dash_body: "Tambahkan kontrak pertama Anda untuk melihat peringatan kedaluwarsa, sebaran risiko, dan eksposur nilai di sini — atau muat data contoh untuk melihat tampilannya lebih dulu.",
@@ -727,6 +733,7 @@
       col_currency: "Currency",
       col_total_value: "Kabuuang halaga (aktibo)",
       value_empty: "Wala pang aktibong kontrata na may halaga.",
+      portfolio_title: "Pangkalahatang-ideya ng portfolio",
 
       empty_dash_title: "Wala pang kontrata",
       empty_dash_body: "Idagdag ang iyong unang kontrata para makita ang mga babala sa pag-expire, risgo, at halaga dito — o mag-load muna ng sample data para makita kung ano ang itsura nito.",

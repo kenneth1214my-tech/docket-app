@@ -191,6 +191,22 @@
     return '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 2.5h7l3 3v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-14a1 1 0 0 1 1-1z"/><path d="M12 2.5v3h3"/><path d="M6.5 10h7M6.5 13h7M6.5 7h3"/></svg>';
   }
 
+  function logoMark() {
+    return '<svg class="logo" viewBox="0 0 32 32" fill="none" aria-hidden="true">' +
+      '<rect x="1" y="1" width="30" height="30" rx="9" fill="var(--primary)"/>' +
+      '<path d="M11.5 9.5h9a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1z" stroke="var(--primary-ink)" stroke-width="1.6"/>' +
+      '<path d="M13 15.2l2.1 2.1 3.9-4.2" stroke="var(--primary-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>' +
+      "</svg>";
+  }
+
+  var KPI_ICONS = {
+    total: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 2.3l7 3.5-7 3.5-7-3.5 7-3.5z" stroke-linejoin="round"/><path d="M3 9.3l7 3.5 7-3.5" stroke-linecap="round" stroke-linejoin="round"/><path d="M3 13.3l7 3.5 7-3.5" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    active: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7.2"/><path d="M6.8 10.2l2.1 2.1 4.3-4.6" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    clock: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7.2"/><path d="M10 6.2v4l2.8 1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    alert: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 3.3l7.3 12.6a0.9 0.9 0 0 1-0.8 1.3H3.5a0.9 0.9 0 0 1-0.8-1.3L10 3.3z" stroke-linejoin="round"/><path d="M10 8.3v3.4" stroke-linecap="round"/><circle cx="10" cy="14.1" r="0.95" fill="currentColor" stroke="none"/></svg>',
+    shield: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 2.6l5.8 2.1v4.6c0 3.9-2.5 6.6-5.8 7.8-3.3-1.2-5.8-3.9-5.8-7.8V4.7L10 2.6z" stroke-linejoin="round"/><path d="M10 7.2v3.3" stroke-linecap="round"/><circle cx="10" cy="13" r="0.95" fill="currentColor" stroke="none"/></svg>'
+  };
+
   function langSwitcher() {
     return '<div class="field" style="margin-bottom:2px"><label>' + esc(t("language")) + '</label><select id="lang-select" class="chip-select">' +
       I18N.LANGS.map(function (l) { return '<option value="' + l.code + '"' + (l.code === UI.lang ? " selected" : "") + ">" + esc(l.name) + "</option>"; }).join("") +
@@ -200,7 +216,7 @@
   function renderSidebar() {
     return (
       '<div class="sidebar">' +
-        '<div class="brand"><span class="mark">Docket</span><span class="tag">' + esc(t("brand_tag")) + '</span></div>' +
+        '<div class="brand">' + logoMark() + '<span class="wordmark"><span class="mark">Docket</span><span class="tag">' + esc(t("brand_tag")) + "</span></span></div>" +
         '<nav class="nav">' +
           '<button class="nav-item' + (UI.view === "dashboard" ? " active" : "") + '" data-nav="dashboard">' + navIcon("dashboard") + esc(t("nav_dashboard")) + "</button>" +
           '<button class="nav-item' + (UI.view === "register" ? " active" : "") + '" data-nav="register">' + navIcon("register") + esc(t("nav_contracts")) + "</button>" +
@@ -218,8 +234,10 @@
     );
   }
 
-  function kpi(label, value) {
-    return '<div class="kpi"><div class="label">' + esc(label) + '</div><div class="value">' + value + "</div></div>";
+  function kpi(label, value, iconKey, tone) {
+    return '<div class="kpi' + (tone ? " tone-" + tone : "") + '"><div class="label-row"><div class="label">' + esc(label) + "</div>" +
+      (iconKey ? '<span class="kpi-icon">' + KPI_ICONS[iconKey] + "</span>" : "") +
+      '</div><div class="value">' + value + "</div></div>";
   }
 
   function renderDashboard() {
@@ -250,12 +268,13 @@
     return (
       '<div class="topbar"><div><h1>' + esc(t("dash_title")) + "</h1><div class=\"sub\">" + esc(t("dash_sub")) + "</div></div></div>" +
       '<div class="kpi-grid">' +
-        kpi(t("kpi_total"), total) +
-        kpi(t("kpi_active"), active) +
-        kpi(t("kpi_expiring"), expiringSoon) +
-        kpi(t("kpi_overdue"), overdueOrExpired) +
-        kpi(t("kpi_critical"), criticalRisk) +
+        kpi(t("kpi_total"), total, "total") +
+        kpi(t("kpi_active"), active, "active", "success") +
+        kpi(t("kpi_expiring"), expiringSoon, "clock", expiringSoon > 0 ? "warning" : null) +
+        kpi(t("kpi_overdue"), overdueOrExpired, "alert", overdueOrExpired > 0 ? "danger" : null) +
+        kpi(t("kpi_critical"), criticalRisk, "shield", criticalRisk > 0 ? "danger" : null) +
       "</div>" +
+      renderPortfolioPanel(cs) +
       '<div class="panel">' +
         '<div class="panel-head"><h2>' + esc(t("radar_title")) + '</h2><span class="hint">' + esc(t("radar_hint")) + "</span></div>" +
         '<div class="radar">' +
@@ -285,10 +304,21 @@
     );
   }
 
+  function emptyIllustration() {
+    return '<svg class="empty-illustration" viewBox="0 0 96 96" fill="none" aria-hidden="true">' +
+      '<path d="M14 40V29a6 6 0 0 1 6-6h15l8 9h29a6 6 0 0 1 6 6v2" stroke="var(--primary)" stroke-width="2.2" stroke-linejoin="round"/>' +
+      '<rect x="14" y="40" width="68" height="35" rx="6" fill="var(--primary-tint)" stroke="var(--primary)" stroke-width="2.2"/>' +
+      '<path d="M28 55h30M28 63h20" stroke="var(--primary)" stroke-width="2.2" stroke-linecap="round" opacity="0.55"/>' +
+      '<circle cx="71" cy="33" r="13" fill="var(--primary)"/>' +
+      '<path d="M71 27.5v11M65.5 33h11" stroke="var(--primary-ink)" stroke-width="2.6" stroke-linecap="round"/>' +
+      "</svg>";
+  }
+
   function renderEmptyDashboard() {
     return (
       '<div class="topbar"><div><h1>' + esc(t("dash_title")) + "</h1><div class=\"sub\">" + esc(t("dash_sub")) + "</div></div></div>" +
       '<div class="panel"><div class="empty-state">' +
+        emptyIllustration() +
         "<h3>" + esc(t("empty_dash_title")) + "</h3>" +
         "<p>" + esc(t("empty_dash_body")) + "</p>" +
         '<div class="empty-actions">' +
@@ -301,6 +331,53 @@
 
   function radarCell(key, label, n) {
     return '<div class="radar-cell ' + key + '"><div class="n">' + n + '</div><div class="l">' + esc(label) + "</div></div>";
+  }
+
+  function statusTone(status) {
+    if (status === "Active" || status === "Renewed") return "active";
+    if (status === "Expiring Soon") return "medium";
+    if (status === "Terminated") return "critical";
+    if (status === "Under Negotiation" || status === "Pending Signature") return "primary";
+    return "neutral"; // Draft, Expired, Archived
+  }
+  function riskTone(risk) {
+    return { Critical: "critical", High: "high", Medium: "medium", Low: "low" }[risk] || "neutral";
+  }
+
+  function barRow(label, value, max, tone) {
+    var pct = max > 0 ? Math.max((value / max) * 100, value > 0 ? 4 : 0) : 0;
+    return '<div class="bar-row"><div class="bar-label" title="' + esc(label) + '">' + esc(label) + '</div>' +
+      '<div class="bar-track"><div class="bar-fill tone-' + tone + '" style="width:' + pct + '%"></div></div>' +
+      '<div class="bar-value">' + value + "</div></div>";
+  }
+
+  function renderPortfolioPanel(cs) {
+    var statusCounts = {};
+    TAXONOMY.statuses.forEach(function (s) { statusCounts[s] = 0; });
+    cs.forEach(function (c) { if (statusCounts.hasOwnProperty(c.status)) statusCounts[c.status]++; });
+    var statusesUsed = TAXONOMY.statuses.filter(function (s) { return statusCounts[s] > 0; });
+    var maxStatus = Math.max.apply(null, statusesUsed.map(function (s) { return statusCounts[s]; }).concat([1]));
+
+    var riskCounts = {};
+    TAXONOMY.riskTiers.forEach(function (r) { riskCounts[r] = 0; });
+    cs.forEach(function (c) { if (riskCounts.hasOwnProperty(c.riskTier)) riskCounts[c.riskTier]++; });
+    var maxRisk = Math.max.apply(null, TAXONOMY.riskTiers.map(function (r) { return riskCounts[r]; }).concat([1]));
+
+    return (
+      '<div class="panel">' +
+        '<div class="panel-head"><h2>' + esc(t("portfolio_title")) + "</h2></div>" +
+        '<div class="bar-list bar-columns">' +
+          "<div>" +
+            '<div class="bar-col-title">' + esc(t("col_status")) + "</div>" +
+            statusesUsed.map(function (s) { return barRow(tx(s), statusCounts[s], maxStatus, statusTone(s)); }).join("") +
+          "</div>" +
+          "<div>" +
+            '<div class="bar-col-title">' + esc(t("col_risk")) + "</div>" +
+            TAXONOMY.riskTiers.map(function (r) { return barRow(tx(r), riskCounts[r], maxRisk, riskTone(r)); }).join("") +
+          "</div>" +
+        "</div>" +
+      "</div>"
+    );
   }
 
   function renderRegister() {
@@ -352,7 +429,7 @@
             "</tr>";
           }).join("") + "</tbody></table>" :
           (isEmptyRegister ?
-            '<div class="empty-state"><h3>' + esc(t("empty_reg_title")) + "</h3><p>" + esc(t("empty_reg_body")) + '</p><div class="empty-actions"><button class="btn btn-primary" data-action="new-contract-empty">' + esc(t("add_first_contract")) + '</button><button class="btn btn-ghost" data-action="load-sample">' + esc(t("load_sample")) + "</button></div></div>" :
+            '<div class="empty-state">' + emptyIllustration() + "<h3>" + esc(t("empty_reg_title")) + "</h3><p>" + esc(t("empty_reg_body")) + '</p><div class="empty-actions"><button class="btn btn-primary" data-action="new-contract-empty">' + esc(t("add_first_contract")) + '</button><button class="btn btn-ghost" data-action="load-sample">' + esc(t("load_sample")) + "</button></div></div>" :
             '<div class="empty-state"><h3>' + esc(t("empty_reg_match_title")) + "</h3><p>" + esc(t("empty_reg_match_body")) + "</p></div>")) +
         "</div>" +
       "</div>"
