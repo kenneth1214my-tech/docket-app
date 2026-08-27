@@ -176,6 +176,7 @@
 
   function renderShell() {
     return (
+      renderTopStrip() +
       '<div class="shell">' +
         renderSidebar() +
         '<main class="main">' + (UI.view === "dashboard" ? renderDashboard() : renderRegister()) + "</main>" +
@@ -183,6 +184,17 @@
       (UI.modal ? renderModal() : "") +
       '<div id="toast-wrap" class="toast-wrap" role="status" aria-live="polite"></div>' +
       '<input type="file" id="import-input" accept="application/json" class="visually-hidden">'
+    );
+  }
+
+  function renderTopStrip() {
+    return (
+      '<div class="top-strip">' +
+        '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><circle cx="10" cy="10" r="7.2"/><path d="M2.8 10h14.4M10 2.8c2 2 3 4.6 3 7.2s-1 5.2-3 7.2c-2-2-3-4.6-3-7.2s1-5.2 3-7.2z"/></svg>' +
+        '<select id="lang-select" class="chip-select" aria-label="' + esc(t("language")) + '">' +
+          I18N.LANGS.map(function (l) { return '<option value="' + l.code + '"' + (l.code === UI.lang ? " selected" : "") + ">" + esc(l.name) + "</option>"; }).join("") +
+        "</select>" +
+      "</div>"
     );
   }
 
@@ -207,12 +219,6 @@
     shield: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M10 2.6l5.8 2.1v4.6c0 3.9-2.5 6.6-5.8 7.8-3.3-1.2-5.8-3.9-5.8-7.8V4.7L10 2.6z" stroke-linejoin="round"/><path d="M10 7.2v3.3" stroke-linecap="round"/><circle cx="10" cy="13" r="0.95" fill="currentColor" stroke="none"/></svg>'
   };
 
-  function langSwitcher() {
-    return '<div class="field" style="margin-bottom:2px"><label>' + esc(t("language")) + '</label><select id="lang-select" class="chip-select">' +
-      I18N.LANGS.map(function (l) { return '<option value="' + l.code + '"' + (l.code === UI.lang ? " selected" : "") + ">" + esc(l.name) + "</option>"; }).join("") +
-      "</select></div>";
-  }
-
   function renderSidebar() {
     return (
       '<div class="sidebar">' +
@@ -221,7 +227,6 @@
           '<button class="nav-item' + (UI.view === "dashboard" ? " active" : "") + '" data-nav="dashboard">' + navIcon("dashboard") + esc(t("nav_dashboard")) + "</button>" +
           '<button class="nav-item' + (UI.view === "register" ? " active" : "") + '" data-nav="register">' + navIcon("register") + esc(t("nav_contracts")) + "</button>" +
         "</nav>" +
-        langSwitcher() +
         '<div class="sidebar-foot">' +
           "<div><strong>" + esc(t("sidebar_data_title")) + "</strong><br>" + esc(t("sidebar_data_body")) + "</div>" +
           '<div class="sidebar-actions">' +
@@ -488,15 +493,43 @@
     );
   }
 
+  function renderUploadZone() {
+    var m = UI.modal;
+    if (m.reading) {
+      return '<div class="upload-zone reading" id="upload-zone"><div class="upload-spinner"></div><div class="upload-title">' + esc(t("upload_reading")) + "</div></div>";
+    }
+    if (m.sourceFileName) {
+      var count = m.fieldsFound || 0;
+      var body = count > 0
+        ? esc(t("upload_prefilled_prefix")) + ' <strong>' + esc(m.sourceFileName) + "</strong> " + esc(t("upload_prefilled_suffix"))
+        : esc(t("upload_prefilled_none"));
+      return '<div class="upload-summary' + (count > 0 ? "" : " none") + '">' +
+        '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 2.5h7l3 3v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-14a1 1 0 0 1 1-1z"/><path d="M12 2.5v3h3"/></svg>' +
+        '<div class="upload-summary-text">' + body + "</div>" +
+        '<button type="button" class="link-btn" data-action="upload-reset">' + esc(t("upload_clear")) + "</button>" +
+      "</div>";
+    }
+    return (
+      '<div class="upload-zone" id="upload-zone">' +
+        '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 13V4M10 4l-3 3M10 4l3 3" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 13.5V15a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 16 15v-1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
+        '<div class="upload-title">' + esc(t("upload_zone_title")) + "</div>" +
+        '<div class="upload-hint">' + esc(t("upload_zone_hint")) + "</div>" +
+        '<input type="file" id="upload-input" accept=".pdf,.docx,.txt" class="visually-hidden">' +
+      "</div>" +
+      '<div class="upload-or-divider"><span>' + esc(t("upload_divider")) + "</span></div>"
+    );
+  }
+
   function renderFormModal() {
     var editing = UI.modal.mode === "edit";
-    var c = editing ? STATE.contracts.find(function (x) { return x.id === UI.modal.id; }) : {};
+    var c = editing ? STATE.contracts.find(function (x) { return x.id === UI.modal.id; }) : (UI.modal.draft || {});
     return (
       '<div class="modal-overlay" data-overlay>' +
         '<div class="modal">' +
           '<div class="modal-head"><h2>' + (editing ? esc(t("modal_edit_title")) : esc(t("modal_new_title"))) + "</h2><button class=\"icon-btn\" data-action=\"close-modal\" aria-label=\"" + esc(t("cancel")) + "\"><svg viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><path d=\"M5 5l10 10M15 5L5 15\"/></svg></button></div>" +
           '<form id="contract-form">' +
           '<div class="modal-body">' +
+            (editing ? "" : renderUploadZone()) +
             '<div class="fieldset-title">' + esc(t("fs_basics")) + "</div>" +
             '<div class="field-grid">' +
               fieldInput("title", t("f_title"), c.title, "text", true, true) +
@@ -538,7 +571,31 @@
   }
 
   // ---------- events ----------
-  function openNewModal() { UI.modal = { mode: "add" }; render(); }
+  function openNewModal() { UI.modal = { mode: "add", draft: null, sourceFileName: null, reading: false, fieldsFound: 0 }; render(); }
+
+  function handleUploadedFile(file) {
+    if (!UI.modal || UI.modal.mode !== "add") return;
+    var ext = file.name.split(".").pop().toLowerCase();
+    if (["pdf", "docx", "txt"].indexOf(ext) === -1) {
+      showToast(t("upload_unsupported"));
+      return;
+    }
+    UI.modal.reading = true;
+    render();
+    window.DocketExtract.extractText(file).then(function (text) {
+      var result = window.DocketExtract.guessFields(text);
+      UI.modal.reading = false;
+      UI.modal.draft = result.guess;
+      UI.modal.sourceFileName = file.name;
+      UI.modal.fieldsFound = result.fieldsFound;
+      render();
+    }).catch(function (err) {
+      UI.modal.reading = false;
+      render();
+      var msg = (err && err.message === "UNSUPPORTED_TYPE") ? t("upload_unsupported") : t("upload_failed_prefix") + (err && err.message ? err.message : String(err));
+      showToast(msg);
+    });
+  }
 
   function bindEvents() {
     document.querySelectorAll("[data-nav]").forEach(function (el) {
@@ -560,6 +617,31 @@
     if (newBtn) newBtn.addEventListener("click", openNewModal);
     var newBtnEmpty = document.querySelector('[data-action="new-contract-empty"]');
     if (newBtnEmpty) newBtnEmpty.addEventListener("click", openNewModal);
+
+    var uploadZone = document.getElementById("upload-zone");
+    var uploadInput = document.getElementById("upload-input");
+    if (uploadZone && uploadInput) {
+      uploadZone.addEventListener("click", function () { uploadInput.click(); });
+      uploadInput.addEventListener("change", function () {
+        if (uploadInput.files && uploadInput.files[0]) handleUploadedFile(uploadInput.files[0]);
+      });
+      ["dragenter", "dragover"].forEach(function (evt) {
+        uploadZone.addEventListener(evt, function (e) { e.preventDefault(); e.stopPropagation(); uploadZone.classList.add("drag-over"); });
+      });
+      ["dragleave", "dragend", "drop"].forEach(function (evt) {
+        uploadZone.addEventListener(evt, function (e) { uploadZone.classList.remove("drag-over"); });
+      });
+      uploadZone.addEventListener("drop", function (e) {
+        e.preventDefault(); e.stopPropagation();
+        var file = e.dataTransfer && e.dataTransfer.files && e.dataTransfer.files[0];
+        if (file) handleUploadedFile(file);
+      });
+    }
+    var uploadReset = document.querySelector('[data-action="upload-reset"]');
+    if (uploadReset) uploadReset.addEventListener("click", function () {
+      UI.modal.draft = null; UI.modal.sourceFileName = null; UI.modal.fieldsFound = 0;
+      render();
+    });
 
     var loadSample = document.querySelector('[data-action="load-sample"]');
     if (loadSample) loadSample.addEventListener("click", function () {
