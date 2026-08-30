@@ -19,6 +19,41 @@
     if (dt.getUTCFullYear() !== y || dt.getUTCMonth() !== m || dt.getUTCDate() !== d) return null;
     return y + "-" + pad2(m + 1) + "-" + pad2(d);
   }
+  function addMonthsISO(iso, months) {
+    var p = iso.split("-").map(Number);
+    var d = new Date(Date.UTC(p[0], p[1] - 1, p[2]));
+    d.setUTCMonth(d.getUTCMonth() + months);
+    return d.toISOString().slice(0, 10);
+  }
+
+  // Many contracts state a DURATION ("for a term of three (3) years") rather than an
+  // explicit expiry date. Requires the word "term" nearby, so a stray "5 years" in an
+  // unrelated clause (e.g. a 5-year-old building, a penalty period) isn't mistaken for
+  // the contract's own length.
+  var TERM_KEYWORD_RE = /\bterm\b/gi;
+  var DURATION_RE = /\(?(\d{1,3})\)?\s*(year|month)s?\b/gi;
+
+  function findTermMonths(text) {
+    var termPositions = [];
+    var tm;
+    TERM_KEYWORD_RE.lastIndex = 0;
+    while ((tm = TERM_KEYWORD_RE.exec(text)) !== null) termPositions.push(tm.index);
+    if (!termPositions.length) return null;
+
+    var best = null, bestDist = Infinity;
+    var dm;
+    DURATION_RE.lastIndex = 0;
+    while ((dm = DURATION_RE.exec(text)) !== null) {
+      var n = Number(dm[1]);
+      if (!n || n > 100) continue; // guard against stray large numbers (e.g. a year like "2026")
+      var months = /year/i.test(dm[2]) ? n * 12 : n;
+      termPositions.forEach(function (ti) {
+        var dist = Math.abs(dm.index - ti);
+        if (dist <= 80 && dist < bestDist) { bestDist = dist; best = months; }
+      });
+    }
+    return best;
+  }
 
   // Matches: "11 June 2026", "11th June 2026", "June 11, 2026", "2026-06-11", "11/06/2026"
   var DATE_PATTERNS = [
@@ -81,10 +116,15 @@
     var codePattern = "(" + CURRENCY_CODES.join("|") + ")\\s?(?:S\\$|US\\$|RM|\\$|€|£|¥)?\\s?([\\d,]{2,}(?:\\.\\d+)?)";
     var symbolPattern = "(S\\$|US\\$|RM|\\$|€|£|¥)\\s?([\\d,]{2,}(?:\\.\\d+)?)";
     var re = new RegExp(codePattern + "|" + symbolPattern, "g");
+    // A bare "$" is genuinely ambiguous (SGD/USD/HKD/etc all use it). Default it to
+    // USD only when nothing in the document suggests otherwise; if "SGD"/"S$"/
+    // "Singapore" appears anywhere, a bare "$" elsewhere is far more likely SGD too -
+    // a contract almost never mixes dollar currencies without spelling out which is which.
+    var impliedBareDollar = /\bSGD\b|S\$|\bSingapore\b/i.test(text) ? "SGD" : "USD";
     var best = null;
     var m;
     while ((m = re.exec(text)) !== null) {
-      var currency = m[1] || CURRENCY_MAP[m[3]] || null;
+      var currency = m[1] || (m[3] === "$" ? impliedBareDollar : CURRENCY_MAP[m[3]]) || null;
       var raw = m[2] || m[4];
       if (!currency || !raw) continue;
       var value = Number(raw.replace(/,/g, ""));
@@ -151,13 +191,24 @@
   // Agreement is entered into...", "Reference No: ...") rather than BEING the title.
   var TITLE_EXCLUDE = /^(date|reference|dated|agreement (term|no|number)|term|effective date|expiry date|expiration date|this (agreement|contract)|between|and\b)\s*[:\-]?\s*\d?/i;
 
+  var TITLE_KEYWORD = /\b(agreement|contract|lease|policy|memorandum|nda|letter of intent|statement of work)\b/i;
+  // Body text ("XYZ Pte Ltd (Company Registration No. 123456) (the "Lessee") a Lease
+  // of...") matches TITLE_KEYWORD just as easily as a real heading does. A real title
+  // is short, doesn't cite a registration/UEN number, and doesn't define a defended
+  // term in quotes - those are recital-sentence tells, not heading tells.
+  var TITLE_BODY_TELLS = /(registration no|company no|uen|reg\.?\s*no|\(the\s+["“]|,\s+having|between\b.*\band\b)/i;
+
   function guessTitle(text) {
     var lines = text.split(/\r?\n/).map(function (l) { return l.trim(); }).filter(Boolean).slice(0, 25);
-    var titleLine = lines.find(function (l) {
-      return l.length >= 8 && l.length <= 90
-        && /\b(agreement|contract|lease|policy|memorandum|nda|letter of intent|statement of work)\b/i.test(l)
-        && !/^\d/.test(l) && !TITLE_EXCLUDE.test(l);
+    var candidates = lines.filter(function (l) {
+      return l.length >= 8 && l.length <= 80
+        && TITLE_KEYWORD.test(l)
+        && l.split(/\s+/).length <= 10 // a heading is a short phrase, not a sentence
+        && !/^\d/.test(l) && !TITLE_EXCLUDE.test(l) && !TITLE_BODY_TELLS.test(l);
     });
+    // Prefer a candidate that ENDS in the keyword ("... SERVICES AGREEMENT") - how
+    // real headings are phrased - over one that merely contains it somewhere.
+    var titleLine = candidates.find(function (l) { return /(agreement|contract|lease|policy|memorandum|nda)\s*$/i.test(l); }) || candidates[0];
     if (!titleLine) return null;
     if (titleLine === titleLine.toUpperCase()) {
       titleLine = titleLine.toLowerCase().replace(/\b\w/g, function (c) { return c.toUpperCase(); });
@@ -178,7 +229,14 @@
     if (title) guess.title = title;
     if (startMatch) guess.startDate = startMatch.iso;
     else if (dates.length) guess.startDate = dates[0].iso; // fall back to earliest date found
-    if (expiryMatch) guess.expiryDate = expiryMatch.iso;
+    if (expiryMatch) {
+      guess.expiryDate = expiryMatch.iso;
+    } else if (guess.startDate) {
+      // No explicit expiry date - many contracts state a duration instead
+      // ("for a term of three (3) years"). Compute it from the start date.
+      var termMonths = findTermMonths(text);
+      if (termMonths) guess.expiryDate = addMonthsISO(guess.startDate, termMonths);
+    }
     if (money) { guess.value = money.value; guess.currency = money.currency; }
     if (companies.length) guess.counterparty = companies[0];
     if (law) guess.governingLaw = law;

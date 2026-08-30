@@ -8,8 +8,9 @@
   function t(key) { return I18N.t(UI.lang, key); }
   function tx(value) { return I18N.taxLabel(UI.lang, value); }
 
+  var DEFAULT_ENTITIES = ["Entity A", "Entity B", "Entity C", "Other Group Entity"];
+
   var TAXONOMY = {
-    entities: ["Entity A", "Entity B", "Entity C", "Other Group Entity"],
     contractTypes: ["NDA / Confidentiality Agreement", "Master Service Agreement (MSA)", "Statement of Work (SOW)", "Vendor / Supplier Agreement", "Customer / Sales Agreement", "Freight Forwarding Agreement", "Customs Brokerage Agreement", "Warehouse / 3PL Agreement", "Distribution / Agency Agreement", "Lease Agreement (Property/Equipment)", "Employment Contract", "Consulting / Independent Contractor", "Insurance Policy", "Loan / Financing Agreement", "Joint Venture Agreement", "Licensing Agreement", "Franchise Agreement", "Government Permit / Regulatory Licence", "Non-Compete / Non-Solicit", "IT / SaaS Subscription Agreement", "Other"],
     statuses: ["Draft", "Under Negotiation", "Pending Signature", "Active", "Expiring Soon", "Expired", "Terminated", "Renewed", "Archived"],
     riskTiers: ["Critical", "High", "Medium", "Low"],
@@ -19,7 +20,7 @@
     currencies: ["SGD", "USD", "MYR", "CNY", "EUR", "HKD", "GBP", "IDR", "THB", "VND"]
   };
 
-  var EMPTY_STATE = { contracts: [] };
+  var EMPTY_STATE = { contracts: [], entities: DEFAULT_ENTITIES.slice() };
 
   function loadState() {
     try {
@@ -27,6 +28,7 @@
       if (!raw) return JSON.parse(JSON.stringify(EMPTY_STATE));
       var parsed = JSON.parse(raw);
       if (!parsed || !Array.isArray(parsed.contracts)) return JSON.parse(JSON.stringify(EMPTY_STATE));
+      if (!Array.isArray(parsed.entities) || !parsed.entities.length) parsed.entities = DEFAULT_ENTITIES.slice();
       return parsed;
     } catch (e) {
       console.warn("Docket: could not read saved data, starting fresh.", e);
@@ -127,6 +129,14 @@
     var ok = saveState(STATE);
     render();
     if (successKey) showToast(ok ? t(successKey) : t("toast_session_only"));
+  }
+
+  function mutateEntitiesState(mutateFn) {
+    var next = JSON.parse(JSON.stringify(STATE));
+    mutateFn(next);
+    STATE = next;
+    saveState(STATE);
+    render();
   }
 
   var toastTimer = null;
@@ -230,6 +240,7 @@
         '<div class="sidebar-foot">' +
           "<div><strong>" + esc(t("sidebar_data_title")) + "</strong><br>" + esc(t("sidebar_data_body")) + "</div>" +
           '<div class="sidebar-actions">' +
+            '<button class="link-btn" data-action="manage-entities">' + esc(t("manage_entities")) + "</button>" +
             '<button class="link-btn" data-action="export">' + esc(t("export_data")) + "</button>" +
             '<button class="link-btn" data-action="import">' + esc(t("import_data")) + "</button>" +
             (STATE.contracts.length === 0 ? '<button class="link-btn" data-action="load-sample">' + esc(t("load_sample")) + "</button>" : '<button class="link-btn" data-action="clear-all">' + esc(t("clear_all")) + "</button>") +
@@ -454,6 +465,13 @@
       options.map(function (o) { return '<option value="' + esc(o) + '"' + (o === value ? " selected" : "") + ">" + esc(tx(o)) + "</option>"; }).join("") +
       "</select></div>";
   }
+  function fieldSelectEntity(value) {
+    return '<div class="field"><div class="field-label-row"><label>' + esc(t("f_entity")) + ' <span class="req">*</span></label>' +
+      '<button type="button" class="link-btn" data-action="manage-entities">' + esc(t("manage_entities")) + "</button></div>" +
+      '<select name="entity"><option value="">—</option>' +
+      STATE.entities.map(function (o) { return '<option value="' + esc(o) + '"' + (o === value ? " selected" : "") + ">" + esc(tx(o)) + "</option>"; }).join("") +
+      "</select></div>";
+  }
   function fieldInput(name, label, value, type, required, full) {
     return '<div class="field' + (full ? " full" : "") + '"><label>' + esc(label) + (required ? ' <span class="req">*</span>' : "") + '</label><input name="' + name + '" type="' + (type || "text") + '" value="' + esc(value == null ? "" : value) + '"></div>';
   }
@@ -464,7 +482,37 @@
   function renderModal() {
     if (UI.modal.mode === "delete") return renderDeleteModal();
     if (UI.modal.mode === "clear-all") return renderClearAllModal();
+    if (UI.modal.mode === "manage-entities") return renderEntitiesModal();
     return renderFormModal();
+  }
+
+  function renderEntitiesModal() {
+    var usage = {};
+    STATE.contracts.forEach(function (c) { if (c.entity) usage[c.entity] = (usage[c.entity] || 0) + 1; });
+    var rows = STATE.entities.map(function (name, i) {
+      var count = usage[name] || 0;
+      return '<div class="entity-row">' +
+        '<input type="text" data-action="entity-rename" data-index="' + i + '" value="' + esc(name) + '">' +
+        (count > 0 ? '<span class="entity-usage">' + count + "</span>" : "") +
+        '<button type="button" class="icon-btn" data-action="entity-delete" data-index="' + i + '" aria-label="' + esc(t("delete")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h12M8 6V4.5a1 1 0 0 1 1-1h2a1 1 0 0 1 1 1V6m-7 0 .6 9.4a1 1 0 0 0 1 .9h5.8a1 1 0 0 0 1-.9L15 6" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
+      "</div>";
+    }).join("");
+    return (
+      '<div class="modal-overlay" data-overlay>' +
+        '<div class="modal">' +
+          '<div class="modal-head"><h2>' + esc(t("entities_modal_title")) + "</h2><button class=\"icon-btn\" data-action=\"close-modal\" aria-label=\"" + esc(t("cancel")) + "\"><svg viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><path d=\"M5 5l10 10M15 5L5 15\"/></svg></button></div>" +
+          '<div class="modal-body">' +
+            '<div class="entities-hint">' + esc(t("entities_hint")) + "</div>" +
+            '<div class="entity-list">' + rows + "</div>" +
+            '<div class="entity-add-row">' +
+              '<input type="text" id="entity-add-input" placeholder="' + esc(t("entities_add_placeholder")) + '">' +
+              '<button type="button" class="btn btn-ghost" data-action="entity-add">' + esc(t("entities_add_btn")) + "</button>" +
+            "</div>" +
+          "</div>" +
+          '<div class="modal-foot"><button type="button" class="btn btn-primary" data-action="close-modal">' + esc(t("entities_done")) + "</button></div>" +
+        "</div>" +
+      "</div>"
+    );
   }
 
   function renderDeleteModal() {
@@ -534,7 +582,7 @@
             '<div class="fieldset-title">' + esc(t("fs_basics")) + "</div>" +
             '<div class="field-grid">' +
               fieldInput("title", t("f_title"), c.title, "text", true, true) +
-              fieldSelect("entity", t("f_entity"), TAXONOMY.entities, c.entity, true) +
+              fieldSelectEntity(c.entity) +
               fieldInput("counterparty", t("f_counterparty"), c.counterparty, "text", true) +
               fieldSelect("counterpartyType", t("f_counterpartyType"), TAXONOMY.counterpartyTypes, c.counterpartyType) +
               fieldSelect("department", t("f_department"), TAXONOMY.departments, c.department) +
@@ -657,7 +705,10 @@
 
     var loadSample = document.querySelector('[data-action="load-sample"]');
     if (loadSample) loadSample.addEventListener("click", function () {
-      persist(function (next) { next.contracts = JSON.parse(JSON.stringify(SAMPLE_CONTRACTS)); }, "toast_sample_loaded");
+      persist(function (next) {
+        next.contracts = JSON.parse(JSON.stringify(SAMPLE_CONTRACTS));
+        next.entities = DEFAULT_ENTITIES.slice();
+      }, "toast_sample_loaded");
     });
 
     var exportBtn = document.querySelector('[data-action="export"]');
@@ -686,11 +737,68 @@
     document.querySelectorAll('[data-action="delete"]').forEach(function (el) {
       el.addEventListener("click", function () { UI.modal = { mode: "delete", id: el.getAttribute("data-id") }; render(); });
     });
+    function closeModal() {
+      UI.modal = (UI.modal && UI.modal.mode === "manage-entities" && UI.modal.returnTo) ? UI.modal.returnTo : null;
+      render();
+    }
     document.querySelectorAll('[data-action="close-modal"]').forEach(function (el) {
-      el.addEventListener("click", function () { UI.modal = null; render(); });
+      el.addEventListener("click", closeModal);
     });
     var overlay = document.querySelector("[data-overlay]");
-    if (overlay) overlay.addEventListener("click", function (e) { if (e.target === overlay) { UI.modal = null; render(); } });
+    if (overlay) overlay.addEventListener("click", function (e) { if (e.target === overlay) closeModal(); });
+
+    document.querySelectorAll('[data-action="manage-entities"]').forEach(function (el) {
+      el.addEventListener("click", function () {
+        var returnTo = (UI.modal && (UI.modal.mode === "add" || UI.modal.mode === "edit")) ? UI.modal : null;
+        UI.modal = { mode: "manage-entities", returnTo: returnTo };
+        render();
+      });
+    });
+
+    var entityAddInput = document.getElementById("entity-add-input");
+    function doAddEntity() {
+      if (!entityAddInput) return;
+      var name = entityAddInput.value.trim();
+      if (!name) { showToast(t("entities_empty_name")); return; }
+      var exists = STATE.entities.some(function (e) { return e.toLowerCase() === name.toLowerCase(); });
+      if (exists) { showToast(t("entities_duplicate")); return; }
+      mutateEntitiesState(function (next) { next.entities.push(name); });
+    }
+    var entityAddBtn = document.querySelector('[data-action="entity-add"]');
+    if (entityAddBtn) entityAddBtn.addEventListener("click", doAddEntity);
+    if (entityAddInput) entityAddInput.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); doAddEntity(); } });
+
+    document.querySelectorAll('[data-action="entity-rename"]').forEach(function (el) {
+      el.addEventListener("keydown", function (e) { if (e.key === "Enter") { e.preventDefault(); el.blur(); } });
+      el.addEventListener("change", function () {
+        var idx = Number(el.getAttribute("data-index"));
+        var oldName = STATE.entities[idx];
+        var newName = el.value.trim();
+        if (!newName || newName === oldName) { el.value = oldName; return; }
+        var dup = STATE.entities.some(function (e, i) { return i !== idx && e.toLowerCase() === newName.toLowerCase(); });
+        if (dup) { showToast(t("entities_duplicate")); el.value = oldName; return; }
+        // Saved silently (no re-render): the input already shows the typed value,
+        // and re-rendering here would destroy focus on whatever field the user clicks next.
+        var next = JSON.parse(JSON.stringify(STATE));
+        next.entities[idx] = newName;
+        next.contracts.forEach(function (c) { if (c.entity === oldName) c.entity = newName; });
+        STATE = next;
+        saveState(STATE);
+      });
+    });
+
+    document.querySelectorAll('[data-action="entity-delete"]').forEach(function (el) {
+      el.addEventListener("click", function () {
+        var idx = Number(el.getAttribute("data-index"));
+        var name = STATE.entities[idx];
+        var count = STATE.contracts.filter(function (c) { return c.entity === name; }).length;
+        if (count > 0) {
+          showToast('"' + name + '" ' + t("entities_delete_blocked") + " " + count + " " + t("entities_delete_blocked_suffix"));
+          return;
+        }
+        mutateEntitiesState(function (next) { next.entities.splice(idx, 1); });
+      });
+    });
 
     var confirmDel = document.querySelector('[data-action="confirm-delete"]');
     if (confirmDel) confirmDel.addEventListener("click", function () {
@@ -744,7 +852,9 @@
   }
 
   document.addEventListener("keydown", function (e) {
-    if (e.key === "Escape" && UI.modal) { UI.modal = null; render(); }
+    if (e.key !== "Escape" || !UI.modal) return;
+    UI.modal = (UI.modal.mode === "manage-entities" && UI.modal.returnTo) ? UI.modal.returnTo : null;
+    render();
   });
 
   render();
