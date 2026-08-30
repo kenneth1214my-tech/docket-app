@@ -496,7 +496,8 @@
   function renderUploadZone() {
     var m = UI.modal;
     if (m.reading) {
-      return '<div class="upload-zone reading" id="upload-zone"><div class="upload-spinner"></div><div class="upload-title">' + esc(t("upload_reading")) + "</div></div>";
+      var progressLine = m.ocrLabel ? '<div class="upload-hint">' + esc(t("upload_ocr_running")) + " — " + esc(m.ocrLabel) + (m.ocrPct != null ? " " + m.ocrPct + "%" : "") + "</div>" : "";
+      return '<div class="upload-zone reading" id="upload-zone"><div class="upload-spinner"></div><div class="upload-title">' + esc(t("upload_reading")) + "</div>" + progressLine + "</div>";
     }
     if (m.sourceFileName) {
       var count = m.fieldsFound || 0;
@@ -514,7 +515,7 @@
         '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><path d="M10 13V4M10 4l-3 3M10 4l3 3" stroke-linecap="round" stroke-linejoin="round"/><path d="M4 13.5V15a1.5 1.5 0 0 0 1.5 1.5h9A1.5 1.5 0 0 0 16 15v-1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>' +
         '<div class="upload-title">' + esc(t("upload_zone_title")) + "</div>" +
         '<div class="upload-hint">' + esc(t("upload_zone_hint")) + "</div>" +
-        '<input type="file" id="upload-input" accept=".pdf,.docx,.txt" class="visually-hidden">' +
+        '<input type="file" id="upload-input" accept=".pdf,.docx,.txt,.jpg,.jpeg,.png,.webp" class="visually-hidden">' +
       "</div>" +
       '<div class="upload-or-divider"><span>' + esc(t("upload_divider")) + "</span></div>"
     );
@@ -576,13 +577,24 @@
   function handleUploadedFile(file) {
     if (!UI.modal || UI.modal.mode !== "add") return;
     var ext = file.name.split(".").pop().toLowerCase();
-    if (["pdf", "docx", "txt"].indexOf(ext) === -1) {
+    if (["pdf", "docx", "txt", "jpg", "jpeg", "png", "webp", "bmp"].indexOf(ext) === -1) {
       showToast(t("upload_unsupported"));
       return;
     }
     UI.modal.reading = true;
+    UI.modal.ocrLabel = null;
+    UI.modal.ocrPct = null;
     render();
-    window.DocketExtract.extractText(file).then(function (text) {
+
+    var lastRenderAt = 0;
+    function onProgress(label, fraction) {
+      UI.modal.ocrLabel = label;
+      UI.modal.ocrPct = Math.round((fraction || 0) * 100);
+      var now = Date.now();
+      if (now - lastRenderAt > 200) { lastRenderAt = now; render(); } // throttle - OCR fires progress very frequently
+    }
+
+    window.DocketExtract.extractText(file, onProgress).then(function (text) {
       var result = window.DocketExtract.guessFields(text);
       UI.modal.reading = false;
       UI.modal.draft = result.guess;

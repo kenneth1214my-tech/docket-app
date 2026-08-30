@@ -187,8 +187,32 @@
     return { guess: guess, fieldsFound: fieldsFound, companies: companies };
   }
 
+  // ---------- OCR (scanned pages / photographed documents) ----------
+  // Runs entirely in the browser via Tesseract.js - no server, no API key. Real
+  // tradeoff vs born-digital text: noticeably slower (seconds per page) and
+  // meaningfully less accurate on skewed scans, stamps, or handwriting.
+  var OCR_MIN_TEXT_LENGTH = 40; // below this, a "text" PDF page is almost certainly a scan
+
+  function ocrImageSource(source, onProgress, pageLabel) {
+    if (!global.Tesseract) throw new Error("OCR engine did not load — check your connection and try again.");
+    return global.Tesseract.recognize(source, "eng", {
+      logger: function (m) {
+        if (onProgress && m.status === "recognizing text") onProgress(pageLabel, m.progress);
+      }
+    }).then(function (result) { return result.data.text; });
+  }
+
+  function renderPdfPageToCanvas(page, scale) {
+    var viewport = page.getViewport({ scale: scale || 2 });
+    var canvas = document.createElement("canvas");
+    canvas.width = viewport.width;
+    canvas.height = viewport.height;
+    var ctx = canvas.getContext("2d");
+    return page.render({ canvasContext: ctx, viewport: viewport }).promise.then(function () { return canvas; });
+  }
+
   // ---------- file readers ----------
-  function extractPdfText(file) {
+  function extractPdfText(file, onProgress) {
     return file.arrayBuffer().then(function (buf) {
       if (!global.pdfjsLib) throw new Error("PDF reader did not load — check your connection and try again.");
       return global.pdfjsLib.getDocument({ data: buf }).promise;
@@ -202,8 +226,29 @@
           });
         }));
       }
-      return Promise.all(pagePromises).then(function (pages) { return pages.join("\n"); });
+      return Promise.all(pagePromises).then(function (pages) { return { pdf: pdf, maxPages: maxPages, text: pages.join("\n") }; });
+    }).then(function (result) {
+      if (result.text.trim().length >= OCR_MIN_TEXT_LENGTH) return result.text;
+      // No meaningful embedded text - this is almost certainly a scanned/photographed
+      // page, not a digitally-created PDF. Fall back to rendering each page as an
+      // image and running OCR on it instead.
+      var pdf = result.pdf, maxPages = result.maxPages;
+      var chain = Promise.resolve();
+      var ocrTexts = [];
+      var _loop = function (i) {
+        chain = chain.then(function () {
+          return pdf.getPage(i).then(function (page) { return renderPdfPageToCanvas(page); })
+            .then(function (canvas) { return ocrImageSource(canvas, onProgress, "page " + i + "/" + maxPages); })
+            .then(function (text) { ocrTexts.push(text); });
+        });
+      };
+      for (var i = 1; i <= maxPages; i++) _loop(i);
+      return chain.then(function () { return ocrTexts.join("\n"); });
     });
+  }
+
+  function extractImageText(file, onProgress) {
+    return ocrImageSource(file, onProgress, "image");
   }
 
   function extractDocxText(file) {
@@ -227,11 +272,12 @@
     return file.text();
   }
 
-  function extractText(file) {
+  function extractText(file, onProgress) {
     var name = file.name.toLowerCase();
-    if (name.endsWith(".pdf")) return extractPdfText(file);
+    if (name.endsWith(".pdf")) return extractPdfText(file, onProgress);
     if (name.endsWith(".docx")) return extractDocxText(file);
     if (name.endsWith(".txt")) return extractTxtText(file);
+    if (/\.(jpe?g|png|webp|bmp)$/.test(name)) return extractImageText(file, onProgress);
     return Promise.reject(new Error("UNSUPPORTED_TYPE"));
   }
 
