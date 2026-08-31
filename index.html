@@ -20,6 +20,10 @@
   pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4/build/pdf.worker.min.mjs";
   window.pdfjsLib = pdfjsLib;
 </script>
+<script type="module">
+  import { upload } from "https://esm.sh/@vercel/blob@2/client";
+  window.VercelBlobUpload = upload;
+</script>
 <script src="i18n.js"></script>
 <script src="extract.js"></script>
 <script src="app.js"></script>

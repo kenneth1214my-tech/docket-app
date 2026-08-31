@@ -817,19 +817,17 @@
   var UPLOAD_ACCESS_CODE = "0Ipq64sUJZyluhCPqtrKwQj4";
 
   function uploadFileToBackend(file) {
-    return fetch("/api/upload", {
-      method: "POST",
-      headers: {
-        "Content-Type": file.type || "application/octet-stream",
-        "x-file-name": encodeURIComponent(file.name),
-        "x-upload-code": UPLOAD_ACCESS_CODE
-      },
-      body: file
-    }).then(function (res) {
-      return res.json().catch(function () { return {}; }).then(function (data) {
-        if (!res.ok) throw new Error((data && data.error) || (res.status + " " + res.statusText));
-        return data;
-      });
+    if (!window.VercelBlobUpload) return Promise.reject(new Error("Upload library did not load - check your connection and try again."));
+    // Client upload: the file goes straight from this browser to Blob
+    // storage, never through our own serverless function. Required, not
+    // optional - Vercel functions hard-cap request bodies at ~4.5MB, well
+    // below what a real scanned contract PDF/photo often is.
+    return window.VercelBlobUpload("contracts/" + Date.now() + "-" + file.name, file, {
+      access: "public",
+      handleUploadUrl: "/api/upload",
+      clientPayload: JSON.stringify({ code: UPLOAD_ACCESS_CODE })
+    }).then(function (blob) {
+      return { url: blob.url, pathname: blob.pathname, size: file.size };
     });
   }
 

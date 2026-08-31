@@ -1,11 +1,20 @@
-// Stores the original uploaded contract file in Vercel Blob so it can be
-// retrieved later. Nothing else in Docket needs a server - this route
-// exists purely so an uploaded PDF/DOCX/image isn't discarded after its
-// text is pulled out client-side for extraction.
-const { put } = require("@vercel/blob");
+// Issues short-lived client tokens for Vercel Blob "client uploads" - the
+// browser uploads the file bytes directly to Blob storage, never through
+// this function. This is required, not optional: Vercel serverless
+// functions hard-cap request bodies at ~4.5MB, and real scanned contracts
+// (photographed leases, multi-page agreements) routinely exceed that.
+const { handleUpload } = require("@vercel/blob/client");
 
-const ALLOWED_EXT = ["pdf", "docx", "txt", "jpg", "jpeg", "png", "webp", "bmp"];
-const MAX_BYTES = 20 * 1024 * 1024; // 20MB
+const ALLOWED_CONTENT_TYPES = [
+  "application/pdf",
+  "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+  "text/plain",
+  "image/jpeg",
+  "image/png",
+  "image/webp",
+  "image/bmp"
+];
+const MAX_BYTES = 25 * 1024 * 1024; // 25MB - generous for a scanned contract, still a sane cap
 
 module.exports = async (req, res) => {
   if (req.method !== "POST") {
@@ -13,77 +22,46 @@ module.exports = async (req, res) => {
     return;
   }
 
-  // Lightweight bot/abuse deterrent, not a real secret: this app has no login,
-  // so the code is baked into the public client bundle. It filters out
-  // automated scanners hitting the endpoint directly; it does not stop
-  // someone who reads the JS. Server-side size/type limits below are the
-  // real backstop.
-  const accessCode = process.env.UPLOAD_ACCESS_CODE;
-  if (accessCode && req.headers["x-upload-code"] !== accessCode) {
-    res.status(401).json({ error: "Invalid or missing upload code." });
-    return;
-  }
-
-  let fileName = "";
-  try {
-    fileName = decodeURIComponent(req.headers["x-file-name"] || "");
-  } catch (e) {
-    fileName = "";
-  }
-  if (!fileName) {
-    res.status(400).json({ error: "Missing x-file-name header." });
-    return;
-  }
-
-  const ext = (fileName.split(".").pop() || "").toLowerCase();
-  if (ALLOWED_EXT.indexOf(ext) === -1) {
-    res.status(400).json({ error: "Unsupported file type." });
-    return;
-  }
-
-  // bodyParser is disabled below, but some runtimes (notably `vercel dev`
-  // locally) pre-drain the stream into req.body regardless - handle both.
-  let buffer;
-  if (req.body && (Buffer.isBuffer(req.body) || typeof req.body === "string")) {
-    buffer = Buffer.isBuffer(req.body) ? req.body : Buffer.from(req.body);
-  } else {
-    const chunks = [];
-    let total = 0;
+  let body = req.body;
+  if (!body || typeof body !== "object") {
+    // Defensive fallback in case a runtime doesn't auto-parse JSON bodies.
     try {
-      for await (const chunk of req) {
-        total += chunk.length;
-        if (total > MAX_BYTES) {
-          res.status(413).json({ error: "File too large (max 20MB)." });
-          return;
-        }
-        chunks.push(chunk);
-      }
+      const chunks = [];
+      for await (const chunk of req) chunks.push(chunk);
+      body = JSON.parse(Buffer.concat(chunks).toString("utf8"));
     } catch (e) {
-      res.status(400).json({ error: "Could not read upload." });
+      res.status(400).json({ error: "Invalid request body." });
       return;
     }
-    buffer = Buffer.concat(chunks);
   }
-  if (!buffer || !buffer.length) {
-    res.status(400).json({ error: "Empty file." });
-    return;
-  }
-  if (buffer.length > MAX_BYTES) {
-    res.status(413).json({ error: "File too large (max 20MB)." });
-    return;
-  }
+
+  const accessCode = process.env.UPLOAD_ACCESS_CODE;
 
   try {
-    const safeName = fileName.replace(/[^a-zA-Z0-9._-]/g, "_");
-    const blob = await put("contracts/" + Date.now() + "-" + safeName, buffer, {
-      access: "public",
-      addRandomSuffix: true,
-      contentType: req.headers["content-type"] || undefined
+    const jsonResponse = await handleUpload({
+      body,
+      request: req,
+      onBeforeGenerateToken: async (pathname, clientPayload) => {
+        // Same bot/abuse deterrent as before, just checked here instead of
+        // via a header - client uploads pass this through clientPayload.
+        if (accessCode) {
+          let payload = {};
+          try { payload = JSON.parse(clientPayload || "{}"); } catch (e) { /* ignore */ }
+          if (payload.code !== accessCode) throw new Error("Invalid or missing upload code.");
+        }
+        return {
+          allowedContentTypes: ALLOWED_CONTENT_TYPES,
+          maximumSizeInBytes: MAX_BYTES,
+          addRandomSuffix: true
+        };
+      },
+      onUploadCompleted: async () => {
+        // No server-side database to update - the client already receives
+        // the blob URL directly from the upload() call and saves it itself.
+      }
     });
-    res.status(200).json({ url: blob.url, pathname: blob.pathname, size: buffer.length });
-  } catch (e) {
-    res.status(500).json({ error: "Upload failed: " + (e && e.message ? e.message : String(e)) });
+    res.status(200).json(jsonResponse);
+  } catch (error) {
+    res.status(400).json({ error: error && error.message ? error.message : String(error) });
   }
 };
-
-module.exports.config = { api: { bodyParser: false } };
