@@ -22,6 +22,22 @@
 
   var EMPTY_STATE = { contracts: [], entities: DEFAULT_ENTITIES.slice() };
 
+  // Free-text fields standardized to uppercase (logistics/customs-doc
+  // convention). Select fields are left alone - their values are exact
+  // taxonomy strings and uppercasing would break every lookup against them.
+  var UPPERCASE_FIELDS = ["title", "counterparty", "paymentTerms", "governingLaw", "obligations", "terminationClause", "liabilityNotes", "tags", "notes"];
+
+  // Applied on every load, not just on save, so records created before this
+  // rule existed (or brought in via JSON import) get normalized too, instead
+  // of being stuck in mixed case until someone happens to re-edit them.
+  function normalizeContractCase(c) {
+    var changed = false;
+    UPPERCASE_FIELDS.forEach(function (k) {
+      if (typeof c[k] === "string" && c[k] !== c[k].toUpperCase()) { c[k] = c[k].toUpperCase(); changed = true; }
+    });
+    return changed;
+  }
+
   function loadState() {
     try {
       var raw = window.localStorage.getItem(STORAGE_KEY);
@@ -29,6 +45,11 @@
       var parsed = JSON.parse(raw);
       if (!parsed || !Array.isArray(parsed.contracts)) return JSON.parse(JSON.stringify(EMPTY_STATE));
       if (!Array.isArray(parsed.entities) || !parsed.entities.length) parsed.entities = DEFAULT_ENTITIES.slice();
+      var anyChanged = false;
+      parsed.contracts.forEach(function (c) { if (normalizeContractCase(c)) anyChanged = true; });
+      if (anyChanged) {
+        try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed)); } catch (e) { /* ignore - still usable in memory */ }
+      }
       return parsed;
     } catch (e) {
       console.warn("Docket: could not read saved data, starting fresh.", e);
@@ -845,10 +866,6 @@
     autoRenewal: ["Yes", "No"]
   };
   var AI_TEXT_FIELDS = ["title", "counterparty", "governingLaw", "paymentTerms", "obligations", "terminationClause", "liabilityNotes", "tags"];
-  // Free-text fields standardized to uppercase on save (logistics/customs-doc
-  // convention). Select fields are left alone - their values are exact
-  // taxonomy strings and uppercasing would break every lookup against them.
-  var UPPERCASE_FIELDS = ["title", "counterparty", "paymentTerms", "governingLaw", "obligations", "terminationClause", "liabilityNotes", "tags", "notes"];
   var AI_DATE_FIELDS = ["startDate", "expiryDate"];
   var AI_NUMBER_FIELDS = ["value", "noticeDays"];
 
@@ -1170,7 +1187,7 @@
         }
         data.value = data.value ? Number(data.value) : null;
         data.noticeDays = data.noticeDays ? Number(data.noticeDays) : null;
-        UPPERCASE_FIELDS.forEach(function (k) { if (typeof data[k] === "string") data[k] = data[k].toUpperCase(); });
+        normalizeContractCase(data);
 
         if (UI.modal.mode === "edit") {
           var id = UI.modal.id;
