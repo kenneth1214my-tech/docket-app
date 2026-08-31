@@ -300,6 +300,9 @@ select.chip-select { padding: 7px 10px; font-size: 12.5px; }
 .field .req { color: var(--danger); }
 .fieldset-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); font-weight: 700; margin: 18px 0 10px; }
 .fieldset-title:first-child { margin-top: 0; }
+.duration-input { display: flex; gap: 8px; }
+.duration-input input { width: 76px; flex-shrink: 0; }
+.duration-input select { flex: 1; min-width: 0; }
 
 .upload-zone {
   border: 1.5px dashed var(--border-strong); border-radius: 10px; background: var(--surface-2);

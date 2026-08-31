@@ -40,19 +40,23 @@
     while ((tm = TERM_KEYWORD_RE.exec(text)) !== null) termPositions.push(tm.index);
     if (!termPositions.length) return null;
 
-    var best = null, bestDist = Infinity;
+    var best = null, bestDist = Infinity, bestValue = null, bestUnit = null;
     var dm;
     DURATION_RE.lastIndex = 0;
     while ((dm = DURATION_RE.exec(text)) !== null) {
       var n = Number(dm[1]);
       if (!n || n > 100) continue; // guard against stray large numbers (e.g. a year like "2026")
-      var months = /year/i.test(dm[2]) ? n * 12 : n;
+      var isYears = /year/i.test(dm[2]);
+      var months = isYears ? n * 12 : n;
       termPositions.forEach(function (ti) {
         var dist = Math.abs(dm.index - ti);
-        if (dist <= 80 && dist < bestDist) { bestDist = dist; best = months; }
+        if (dist <= 80 && dist < bestDist) { bestDist = dist; best = months; bestValue = n; bestUnit = isYears ? "Years" : "Months"; }
       });
     }
-    return best;
+    // Keeps the originally-stated figure (e.g. "3 years") alongside the
+    // computed month count, so a caller can show the reader what was
+    // actually found in the text, not just the derived expiry date.
+    return best ? { months: best, value: bestValue, unit: bestUnit } : null;
   }
 
   // Matches: "11 June 2026", "11th June 2026", "June 11, 2026", "2026-06-11", "11/06/2026"
@@ -233,9 +237,15 @@
       guess.expiryDate = expiryMatch.iso;
     } else if (guess.startDate) {
       // No explicit expiry date - many contracts state a duration instead
-      // ("for a term of three (3) years"). Compute it from the start date.
-      var termMonths = findTermMonths(text);
-      if (termMonths) guess.expiryDate = addMonthsISO(guess.startDate, termMonths);
+      // ("for a term of three (3) years"). Compute it from the start date,
+      // and surface the stated term itself so the form shows what was
+      // actually found, not just the date it produced.
+      var term = findTermMonths(text);
+      if (term) {
+        guess.expiryDate = addMonthsISO(guess.startDate, term.months);
+        guess.termValue = term.value;
+        guess.termUnit = term.unit;
+      }
     }
     if (money) { guess.value = money.value; guess.currency = money.currency; }
     if (companies.length) guess.counterparty = companies[0];

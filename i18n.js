@@ -154,6 +154,7 @@
       f_expiryDate: "Expiry date",
       f_autoRenewal: "Auto-renewal",
       f_noticeDays: "Renewal notice (days)",
+      f_term: "Term / duration",
       f_value: "Contract value",
       f_currency: "Currency",
       f_paymentTerms: "Payment terms",
@@ -316,6 +317,7 @@
       f_expiryDate: "到期日期",
       f_autoRenewal: "自动续约",
       f_noticeDays: "续约通知期（天）",
+      f_term: "合同期限",
       f_value: "合同金额",
       f_currency: "币种",
       f_paymentTerms: "付款条款",
@@ -478,6 +480,7 @@
       f_expiryDate: "Tarikh luput",
       f_autoRenewal: "Pembaharuan automatik",
       f_noticeDays: "Notis pembaharuan (hari)",
+      f_term: "Tempoh kontrak",
       f_value: "Nilai kontrak",
       f_currency: "Mata wang",
       f_paymentTerms: "Terma pembayaran",
@@ -640,6 +643,7 @@
       f_expiryDate: "만료일",
       f_autoRenewal: "자동 갱신",
       f_noticeDays: "갱신 통지 기간(일)",
+      f_term: "계약 기간",
       f_value: "계약 금액",
       f_currency: "통화",
       f_paymentTerms: "지급 조건",
@@ -802,6 +806,7 @@
       f_expiryDate: "満了日",
       f_autoRenewal: "自動更新",
       f_noticeDays: "更新通知期間（日）",
+      f_term: "契約期間",
       f_value: "契約金額",
       f_currency: "通貨",
       f_paymentTerms: "支払条件",
@@ -964,6 +969,7 @@
       f_expiryDate: "Tanggal berakhir",
       f_autoRenewal: "Perpanjangan otomatis",
       f_noticeDays: "Masa pemberitahuan perpanjangan (hari)",
+      f_term: "Jangka waktu kontrak",
       f_value: "Nilai kontrak",
       f_currency: "Mata uang",
       f_paymentTerms: "Ketentuan pembayaran",
@@ -1126,6 +1132,7 @@
       f_expiryDate: "Petsa ng pag-expire",
       f_autoRenewal: "Awtomatikong pag-renew",
       f_noticeDays: "Abiso bago mag-renew (araw)",
+      f_term: "Tagal ng kontrata",
       f_value: "Halaga ng kontrata",
       f_currency: "Currency",
       f_paymentTerms: "Mga tuntunin sa bayad",
@@ -1176,7 +1183,7 @@
       "Public": "公开", "Internal": "内部", "Confidential": "保密", "Highly Confidential / Restricted": "高度保密/限制级",
       "Vendor / Supplier": "供应商", "Customer": "客户", "Employee": "员工", "Agent / Distributor": "代理/经销商",
       "Landlord": "房东/出租方", "Government / Regulator": "政府/监管机构", "Financial Institution": "金融机构",
-      "Joint Venture Partner": "合资伙伴", "Yes": "是", "No": "否"
+      "Joint Venture Partner": "合资伙伴", "Yes": "是", "No": "否", "Months": "个月", "Years": "年"
     },
     ms: {
       "Entity A": "Entiti A", "Entity B": "Entiti B", "Entity C": "Entiti C", "Other Group Entity": "Entiti Kumpulan Lain",
@@ -1199,7 +1206,7 @@
       "Public": "Awam", "Internal": "Dalaman", "Confidential": "Sulit", "Highly Confidential / Restricted": "Sangat Sulit/Terhad",
       "Vendor / Supplier": "Pembekal", "Customer": "Pelanggan", "Employee": "Pekerja", "Agent / Distributor": "Ejen/Pengedar",
       "Landlord": "Tuan Tanah", "Government / Regulator": "Kerajaan/Pengawal Selia", "Financial Institution": "Institusi Kewangan",
-      "Joint Venture Partner": "Rakan Usaha Sama", "Yes": "Ya", "No": "Tidak"
+      "Joint Venture Partner": "Rakan Usaha Sama", "Yes": "Ya", "No": "Tidak", "Months": "Bulan", "Years": "Tahun"
     },
     ko: {
       "Entity A": "법인 A", "Entity B": "법인 B", "Entity C": "법인 C", "Other Group Entity": "기타 그룹 법인",
@@ -1222,7 +1229,7 @@
       "Public": "공개", "Internal": "내부", "Confidential": "기밀", "Highly Confidential / Restricted": "특급기밀/제한",
       "Vendor / Supplier": "공급업체", "Customer": "고객", "Employee": "직원", "Agent / Distributor": "대리점/유통업체",
       "Landlord": "임대인", "Government / Regulator": "정부/규제기관", "Financial Institution": "금융기관",
-      "Joint Venture Partner": "합작투자 파트너", "Yes": "예", "No": "아니오"
+      "Joint Venture Partner": "합작투자 파트너", "Yes": "예", "No": "아니오", "Months": "개월", "Years": "년"
     },
     ja: {
       "Entity A": "法人A", "Entity B": "法人B", "Entity C": "法人C", "Other Group Entity": "その他のグループ法人",
@@ -1245,7 +1252,7 @@
       "Public": "公開", "Internal": "社内限定", "Confidential": "機密", "Highly Confidential / Restricted": "極秘/制限付き",
       "Vendor / Supplier": "取引先", "Customer": "顧客", "Employee": "従業員", "Agent / Distributor": "代理店/販売店",
       "Landlord": "貸主", "Government / Regulator": "政府/規制当局", "Financial Institution": "金融機関",
-      "Joint Venture Partner": "合弁パートナー", "Yes": "はい", "No": "いいえ"
+      "Joint Venture Partner": "合弁パートナー", "Yes": "はい", "No": "いいえ", "Months": "ヶ月", "Years": "年"
     },
     id: {
       "Entity A": "Entitas A", "Entity B": "Entitas B", "Entity C": "Entitas C", "Other Group Entity": "Entitas Grup Lain",
@@ -1268,7 +1275,7 @@
       "Public": "Publik", "Internal": "Internal", "Confidential": "Rahasia", "Highly Confidential / Restricted": "Sangat Rahasia/Terbatas",
       "Vendor / Supplier": "Pemasok", "Customer": "Pelanggan", "Employee": "Karyawan", "Agent / Distributor": "Agen/Distributor",
       "Landlord": "Pemilik Properti", "Government / Regulator": "Pemerintah/Regulator", "Financial Institution": "Lembaga Keuangan",
-      "Joint Venture Partner": "Mitra Usaha Patungan", "Yes": "Ya", "No": "Tidak"
+      "Joint Venture Partner": "Mitra Usaha Patungan", "Yes": "Ya", "No": "Tidak", "Months": "Bulan", "Years": "Tahun"
     },
     tl: {
       "Entity A": "Entity A", "Entity B": "Entity B", "Entity C": "Entity C", "Other Group Entity": "Ibang Entity ng Grupo",
@@ -1291,7 +1298,7 @@
       "Public": "Pampubliko", "Internal": "Panloob", "Confidential": "Kumpidensyal", "Highly Confidential / Restricted": "Lubos na Kumpidensyal/Restricted",
       "Vendor / Supplier": "Supplier", "Customer": "Customer", "Employee": "Empleyado", "Agent / Distributor": "Ahente/Distributor",
       "Landlord": "May-ari ng Paupahan", "Government / Regulator": "Pamahalaan/Regulator", "Financial Institution": "Institusyong Pinansyal",
-      "Joint Venture Partner": "Kasosyo sa Joint Venture", "Yes": "Oo", "No": "Hindi"
+      "Joint Venture Partner": "Kasosyo sa Joint Venture", "Yes": "Oo", "No": "Hindi", "Months": "Buwan", "Years": "Taon"
     }
   };
 

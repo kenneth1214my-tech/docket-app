@@ -188,6 +188,12 @@
   }
 
   function addDays(n) { var d = new Date(); d.setDate(d.getDate() + n); return d.toISOString().slice(0, 10); }
+  function addMonthsISO(iso, months) {
+    var p = iso.split("-").map(Number);
+    var d = new Date(Date.UTC(p[0], p[1] - 1, p[2]));
+    d.setUTCMonth(d.getUTCMonth() + months);
+    return d.toISOString().slice(0, 10);
+  }
   var SAMPLE_CONTRACTS = [
     { id: "CTR-2026-001", title: "Air Freight Forwarding Agreement", entity: "Entity A", counterparty: "Global Air Cargo (Singapore) Pte Ltd", counterpartyType: "Vendor / Supplier", department: "Operations / Logistics", contractType: "Freight Forwarding Agreement", riskTier: "Critical", confidentiality: "Confidential", status: "Active", startDate: addDays(-400), expiryDate: addDays(20), autoRenewal: "Yes", noticeDays: 60, value: 850000, currency: "SGD", paymentTerms: "Net 30", governingLaw: "Singapore", obligations: "Volume-based air freight rates; SLA 48hr pickup.", terminationClause: "Either party 60 days written notice.", liabilityNotes: "Liability capped at 1x annual fees.", tags: "freight, air, critical-vendor", notes: "Sample record — edit or delete freely." },
     { id: "CTR-2025-014", title: "Customs Brokerage Services Agreement", entity: "Entity B", counterparty: "Continental Freight Partners Sdn Bhd", counterpartyType: "Vendor / Supplier", department: "Operations / Logistics", contractType: "Customs Brokerage Agreement", riskTier: "High", confidentiality: "Internal", status: "Active", startDate: addDays(-200), expiryDate: addDays(45), autoRenewal: "Yes", noticeDays: 30, value: 120000, currency: "MYR", paymentTerms: "Net 45", governingLaw: "Malaysia", obligations: "Customs clearance and duty advance.", terminationClause: "30 days notice; auto-renews annually.", liabilityNotes: "Indemnity capped at MYR 500,000.", tags: "customs, malaysia", notes: "Sample record — edit or delete freely." },
@@ -240,7 +246,7 @@
     if (!window.XLSX) { showToast(t("toast_excel_lib_missing")); return; }
     var headers = ["ID", t("f_title"), t("col_entity"), t("f_counterparty"), t("f_counterpartyType"), t("f_department"),
       t("f_contractType"), t("f_riskTier"), t("f_confidentiality"), t("f_status"),
-      t("f_startDate"), t("f_expiryDate"), t("col_alert"), t("f_autoRenewal"), t("f_noticeDays"),
+      t("f_startDate"), t("f_term"), t("f_expiryDate"), t("col_alert"), t("f_autoRenewal"), t("f_noticeDays"),
       t("f_value"), t("f_currency"), t("f_paymentTerms"), t("f_governingLaw"),
       t("f_obligations"), t("f_terminationClause"), t("f_liabilityNotes"), t("f_tags"), t("f_notes"),
       t("view_original_document")];
@@ -250,6 +256,7 @@
         c.id, c.title || "", tx(c.entity) || "", c.counterparty || "", tx(c.counterpartyType) || "",
         tx(c.department) || "", tx(c.contractType) || "", tx(c.riskTier) || "", tx(c.confidentiality) || "",
         tx(c.status) || "", c.startDate ? new Date(c.startDate + "T00:00:00") : "",
+        c.termValue != null && c.termValue !== "" ? (c.termValue + " " + (tx(c.termUnit) || "")).trim() : "",
         c.expiryDate ? new Date(c.expiryDate + "T00:00:00") : "", a.label || "", tx(c.autoRenewal) || "",
         c.noticeDays != null && c.noticeDays !== "" ? Number(c.noticeDays) : "",
         c.value != null && c.value !== "" ? Number(c.value) : "", c.currency || "", c.paymentTerms || "",
@@ -632,6 +639,16 @@
   function fieldTextarea(name, label, value) {
     return '<div class="field full"><label>' + esc(label) + '</label><textarea name="' + name + '" rows="2">' + esc(value) + "</textarea></div>";
   }
+  // A term-length input (number + unit) that auto-fills Expiry date once a
+  // Start date is also set, instead of requiring the exact end date to be
+  // hand-calculated - see recomputeExpiryFromTerm() in bindEvents.
+  function fieldDuration(name, label, value, unitName, unitValue) {
+    return '<div class="field"><label>' + esc(label) + '</label><div class="duration-input">' +
+      '<input type="number" min="0" name="' + name + '" value="' + esc(value == null ? "" : value) + '">' +
+      '<select name="' + unitName + '"><option value="">—</option>' +
+      ["Months", "Years"].map(function (o) { return '<option value="' + esc(o) + '"' + (o === unitValue ? " selected" : "") + ">" + esc(tx(o)) + "</option>"; }).join("") +
+      "</select></div></div>";
+  }
 
   function renderModal() {
     if (UI.modal.mode === "delete") return renderDeleteModal();
@@ -783,6 +800,7 @@
             '<div class="fieldset-title">' + esc(t("fs_dates")) + "</div>" +
             '<div class="field-grid">' +
               fieldInput("startDate", t("f_startDate"), c.startDate, "date") +
+              fieldDuration("termValue", t("f_term"), c.termValue, "termUnit", c.termUnit) +
               fieldInput("expiryDate", t("f_expiryDate"), c.expiryDate, "date") +
               fieldSelect("autoRenewal", t("f_autoRenewal"), ["Yes", "No"], c.autoRenewal) +
               fieldInput("noticeDays", t("f_noticeDays"), c.noticeDays, "number") +
@@ -936,11 +954,12 @@
     confidentiality: TAXONOMY.confidentiality,
     counterpartyType: TAXONOMY.counterpartyTypes,
     currency: TAXONOMY.currencies,
-    autoRenewal: ["Yes", "No"]
+    autoRenewal: ["Yes", "No"],
+    termUnit: ["Months", "Years"]
   };
   var AI_TEXT_FIELDS = ["title", "counterparty", "governingLaw", "paymentTerms", "obligations", "terminationClause", "liabilityNotes", "tags"];
   var AI_DATE_FIELDS = ["startDate", "expiryDate"];
-  var AI_NUMBER_FIELDS = ["value", "noticeDays"];
+  var AI_NUMBER_FIELDS = ["value", "noticeDays", "termValue"];
 
   function callClaudeDraft(key, text) {
     var trimmed = text.length > CLAUDE_MAX_CHARS ? text.slice(0, CLAUDE_MAX_CHARS) : text;
@@ -957,6 +976,7 @@
       "title (the contract's name/title), counterparty (the other party's full legal name, not our own entity), " +
       "governingLaw (the jurisdiction whose laws govern the contract), paymentTerms (e.g. \"Net 30\"), " +
       "startDate and expiryDate (ISO format YYYY-MM-DD, compute expiryDate from a stated term length plus startDate if no explicit expiry date is given), " +
+      "termValue (the stated contract term/duration as a plain number, e.g. 3 for \"three (3) years\" - empty string if no duration is stated), " +
       "value (the main contract value as a plain number, no currency symbols or commas), " +
       "noticeDays (the termination notice period in days, as a plain number), " +
       selectInstructions + ", " +
@@ -1280,6 +1300,25 @@
 
     var form = document.getElementById("contract-form");
     if (form) {
+      // Term length + Start date -> Expiry date, so entering the stated
+      // duration ("3 years") fills the end date instead of requiring it to
+      // be hand-calculated. Expiry stays a normal editable field either way.
+      var recomputeExpiryFromTerm = function () {
+        var startEl = form.querySelector('[name="startDate"]');
+        var termEl = form.querySelector('[name="termValue"]');
+        var unitEl = form.querySelector('[name="termUnit"]');
+        var expiryEl = form.querySelector('[name="expiryDate"]');
+        if (!startEl || !termEl || !unitEl || !expiryEl) return;
+        var termVal = Number(termEl.value);
+        if (!startEl.value || !termVal || !unitEl.value) return;
+        var months = unitEl.value === "Years" ? termVal * 12 : termVal;
+        expiryEl.value = addMonthsISO(startEl.value, months);
+      };
+      ["startDate", "termValue", "termUnit"].forEach(function (name) {
+        var el = form.querySelector('[name="' + name + '"]');
+        if (el) el.addEventListener("change", recomputeExpiryFromTerm);
+      });
+
       form.addEventListener("submit", function (e) {
         e.preventDefault();
         var fd = new FormData(form);
@@ -1291,6 +1330,7 @@
         }
         data.value = data.value ? Number(data.value) : null;
         data.noticeDays = data.noticeDays ? Number(data.noticeDays) : null;
+        data.termValue = data.termValue ? Number(data.termValue) : null;
         normalizeContractCase(data);
 
         if (UI.modal.mode === "edit") {
