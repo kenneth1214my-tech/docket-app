@@ -173,6 +173,35 @@
     URL.revokeObjectURL(url);
   }
 
+  function exportExcel() {
+    if (!window.XLSX) { showToast(t("toast_excel_lib_missing")); return; }
+    var headers = ["ID", t("f_title"), t("col_entity"), t("f_counterparty"), t("f_counterpartyType"), t("f_department"),
+      t("f_contractType"), t("f_riskTier"), t("f_confidentiality"), t("f_status"),
+      t("f_startDate"), t("f_expiryDate"), t("col_alert"), t("f_autoRenewal"), t("f_noticeDays"),
+      t("f_value"), t("f_currency"), t("f_paymentTerms"), t("f_governingLaw"),
+      t("f_obligations"), t("f_terminationClause"), t("f_liabilityNotes"), t("f_tags"), t("f_notes"),
+      t("view_original_document")];
+    var rows = STATE.contracts.map(function (c) {
+      var a = computeAlert(c);
+      return [
+        c.id, c.title || "", tx(c.entity) || "", c.counterparty || "", tx(c.counterpartyType) || "",
+        tx(c.department) || "", tx(c.contractType) || "", tx(c.riskTier) || "", tx(c.confidentiality) || "",
+        tx(c.status) || "", c.startDate ? new Date(c.startDate + "T00:00:00") : "",
+        c.expiryDate ? new Date(c.expiryDate + "T00:00:00") : "", a.label || "", tx(c.autoRenewal) || "",
+        c.noticeDays != null && c.noticeDays !== "" ? Number(c.noticeDays) : "",
+        c.value != null && c.value !== "" ? Number(c.value) : "", c.currency || "", c.paymentTerms || "",
+        c.governingLaw || "", c.obligations || "", c.terminationClause || "", c.liabilityNotes || "",
+        c.tags || "", c.notes || "", c.fileUrl || ""
+      ];
+    });
+    var aoa = [headers].concat(rows);
+    var ws = window.XLSX.utils.aoa_to_sheet(aoa);
+    ws["!cols"] = headers.map(function (h) { return { wch: Math.max(10, Math.min(32, String(h).length + 4)) }; });
+    var wb = window.XLSX.utils.book_new();
+    window.XLSX.utils.book_append_sheet(wb, ws, "Contracts");
+    window.XLSX.writeFile(wb, "docket-contracts-" + new Date().toISOString().slice(0, 10) + ".xlsx");
+  }
+
   function importData(file) {
     var reader = new FileReader();
     reader.onload = function () {
@@ -255,6 +284,7 @@
             '<button class="link-btn" data-action="manage-entities">' + esc(t("manage_entities")) + "</button>" +
             '<button class="link-btn" data-action="ai-settings">' + esc(t("ai_settings")) + "</button>" +
             '<button class="link-btn" data-action="export">' + esc(t("export_data")) + "</button>" +
+            '<button class="link-btn" data-action="export-excel">' + esc(t("export_excel")) + "</button>" +
             '<button class="link-btn" data-action="import">' + esc(t("import_data")) + "</button>" +
             (STATE.contracts.length === 0 ? '<button class="link-btn" data-action="load-sample">' + esc(t("load_sample")) + "</button>" : '<button class="link-btn" data-action="clear-all">' + esc(t("clear_all")) + "</button>") +
           "</div>" +
@@ -907,6 +937,8 @@
 
     var exportBtn = document.querySelector('[data-action="export"]');
     if (exportBtn) exportBtn.addEventListener("click", exportData);
+    var exportExcelBtn = document.querySelector('[data-action="export-excel"]');
+    if (exportExcelBtn) exportExcelBtn.addEventListener("click", exportExcel);
 
     var importBtn = document.querySelector('[data-action="import"]');
     var importInput = document.getElementById("import-input");
