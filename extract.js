@@ -251,14 +251,63 @@
   // meaningfully less accurate on skewed scans, stamps, or handwriting.
   var OCR_MIN_TEXT_LENGTH = 40; // below this, a "text" PDF page is almost certainly a scan
 
-  function ocrImageSource(source, onProgress, pageLabel) {
+  function ocrImageSource(source, onProgress, pageLabel, lang) {
     if (!global.Tesseract) throw new Error("OCR engine did not load — check your connection and try again.");
-    return global.Tesseract.recognize(source, "eng", {
+    return global.Tesseract.recognize(source, lang || "eng", {
       logger: function (m) {
         if (onProgress && m.status === "recognizing text") onProgress(pageLabel, m.progress);
       }
     }).then(function (result) { return result.data.text; });
   }
+
+  // Grayscale + min-max contrast stretch. Cheap (single pixel pass, no new
+  // dependency) but measurably helps Tesseract on the kind of input that
+  // actually reaches this fallback: phone photos with glare/shadows, faded
+  // carbon-copy prints, low-contrast scans - not just clean digital scans.
+  function preprocessCanvasForOcr(canvas) {
+    var ctx = canvas.getContext("2d");
+    var w = canvas.width, h = canvas.height;
+    if (!w || !h) return canvas;
+    var imageData = ctx.getImageData(0, 0, w, h);
+    var d = imageData.data;
+    var n = w * h;
+    var gray = new Uint8ClampedArray(n);
+    var min = 255, max = 0;
+    for (var i = 0, p = 0; i < d.length; i += 4, p++) {
+      var g = 0.299 * d[i] + 0.587 * d[i + 1] + 0.114 * d[i + 2];
+      gray[p] = g;
+      if (g < min) min = g;
+      if (g > max) max = g;
+    }
+    var range = max - min || 1;
+    for (i = 0, p = 0; i < d.length; i += 4, p++) {
+      var v = ((gray[p] - min) * 255) / range;
+      d[i] = d[i + 1] = d[i + 2] = v;
+    }
+    ctx.putImageData(imageData, 0, 0);
+    return canvas;
+  }
+
+  function loadFileToCanvas(file) {
+    return new Promise(function (resolve, reject) {
+      var img = new Image();
+      var url = URL.createObjectURL(file);
+      img.onload = function () {
+        var canvas = document.createElement("canvas");
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        canvas.getContext("2d").drawImage(img, 0, 0);
+        URL.revokeObjectURL(url);
+        resolve(canvas);
+      };
+      img.onerror = function () { URL.revokeObjectURL(url); reject(new Error("Could not load image.")); };
+      img.src = url;
+    });
+  }
+
+  // OCR_RENDER_SCALE controls the resolution a PDF page is rasterized at
+  // before OCR - higher catches small print but costs more time/memory.
+  var OCR_RENDER_SCALE = 3;
 
   function renderPdfPageToCanvas(page, scale) {
     var viewport = page.getViewport({ scale: scale || 2 });
@@ -270,7 +319,7 @@
   }
 
   // ---------- file readers ----------
-  function extractPdfText(file, onProgress) {
+  function extractPdfText(file, onProgress, ocrLang) {
     return file.arrayBuffer().then(function (buf) {
       if (!global.pdfjsLib) throw new Error("PDF reader did not load — check your connection and try again.");
       return global.pdfjsLib.getDocument({ data: buf }).promise;
@@ -295,8 +344,8 @@
       var ocrTexts = [];
       var _loop = function (i) {
         chain = chain.then(function () {
-          return pdf.getPage(i).then(function (page) { return renderPdfPageToCanvas(page); })
-            .then(function (canvas) { return ocrImageSource(canvas, onProgress, "page " + i + "/" + maxPages); })
+          return pdf.getPage(i).then(function (page) { return renderPdfPageToCanvas(page, OCR_RENDER_SCALE); })
+            .then(function (canvas) { return ocrImageSource(preprocessCanvasForOcr(canvas), onProgress, "page " + i + "/" + maxPages, ocrLang); })
             .then(function (text) { ocrTexts.push(text); });
         });
       };
@@ -305,8 +354,10 @@
     });
   }
 
-  function extractImageText(file, onProgress) {
-    return ocrImageSource(file, onProgress, "image");
+  function extractImageText(file, onProgress, ocrLang) {
+    return loadFileToCanvas(file).then(function (canvas) {
+      return ocrImageSource(preprocessCanvasForOcr(canvas), onProgress, "image", ocrLang);
+    });
   }
 
   function extractDocxText(file) {
@@ -330,12 +381,12 @@
     return file.text();
   }
 
-  function extractText(file, onProgress) {
+  function extractText(file, onProgress, ocrLang) {
     var name = file.name.toLowerCase();
-    if (name.endsWith(".pdf")) return extractPdfText(file, onProgress);
+    if (name.endsWith(".pdf")) return extractPdfText(file, onProgress, ocrLang);
     if (name.endsWith(".docx")) return extractDocxText(file);
     if (name.endsWith(".txt")) return extractTxtText(file);
-    if (/\.(jpe?g|png|webp|bmp)$/.test(name)) return extractImageText(file, onProgress);
+    if (/\.(jpe?g|png|webp|bmp)$/.test(name)) return extractImageText(file, onProgress, ocrLang);
     return Promise.reject(new Error("UNSUPPORTED_TYPE"));
   }
 

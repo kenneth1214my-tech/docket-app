@@ -723,6 +723,43 @@
     });
   }
 
+  // Tesseract.js language codes for the app's non-English UI languages.
+  // OCR always includes English (numbers, Latin boilerplate, common loanwords
+  // in SEA business documents) plus the current UI language's script.
+  var OCR_LANG_MAP = { zh: "chi_sim", ms: "msa", ko: "kor", ja: "jpn", id: "ind", tl: "fil" };
+  function ocrLangFor(lang) {
+    var extra = OCR_LANG_MAP[lang];
+    return extra ? "eng+" + extra : "eng";
+  }
+
+  function normalizeCompanyName(s) {
+    return String(s || "").toLowerCase().replace(/[^a-z0-9 ]/g, "").replace(/\s+/g, " ").trim();
+  }
+
+  // The pattern-matcher just grabs the first company-style name it finds in
+  // reading order - on a "BETWEEN [Us] AND [Them]" recital, or a letterhead
+  // that names us first, that's our own entity, not the counterparty. Since
+  // extract.js has no idea which name is ours, fix it up here where we do.
+  function fixCounterpartyGuess(result) {
+    var guess = result.guess, companies = result.companies || [];
+    if (!guess.counterparty) return;
+    var ownNames = STATE.entities.filter(function (e) { return e && DEFAULT_ENTITIES.indexOf(e) === -1; }).map(normalizeCompanyName);
+    if (!ownNames.length) return;
+    var isOwnEntity = function (name) {
+      var n = normalizeCompanyName(name);
+      if (!n) return false;
+      return ownNames.some(function (own) { return own && (own.indexOf(n) !== -1 || n.indexOf(own) !== -1); });
+    };
+    if (!isOwnEntity(guess.counterparty)) return;
+    var alt = companies.find(function (c) { return !isOwnEntity(c); });
+    if (alt) {
+      guess.counterparty = alt;
+    } else {
+      delete guess.counterparty; // no confident alternative - blank beats wrong
+      result.fieldsFound = Math.max(0, (result.fieldsFound || 0) - 1);
+    }
+  }
+
   function handleUploadedFile(file) {
     if (!UI.modal || UI.modal.mode !== "add") return;
     var ext = file.name.split(".").pop().toLowerCase();
@@ -761,9 +798,10 @@
       if (now - lastRenderAt > 200) { lastRenderAt = now; render(); } // throttle - OCR fires progress very frequently
     }
 
-    window.DocketExtract.extractText(file, onProgress).then(function (text) {
+    window.DocketExtract.extractText(file, onProgress, ocrLangFor(UI.lang)).then(function (text) {
       var result = window.DocketExtract.guessFields(text);
       if (UI.modal !== modalRef) return;
+      fixCounterpartyGuess(result);
       modalRef.reading = false;
       modalRef.draft = result.guess;
       modalRef.sourceFileName = file.name;
@@ -793,6 +831,10 @@
     autoRenewal: ["Yes", "No"]
   };
   var AI_TEXT_FIELDS = ["title", "counterparty", "governingLaw", "paymentTerms", "obligations", "terminationClause", "liabilityNotes", "tags"];
+  // Free-text fields standardized to uppercase on save (logistics/customs-doc
+  // convention). Select fields are left alone - their values are exact
+  // taxonomy strings and uppercasing would break every lookup against them.
+  var UPPERCASE_FIELDS = ["title", "counterparty", "paymentTerms", "governingLaw", "obligations", "terminationClause", "liabilityNotes", "tags", "notes"];
   var AI_DATE_FIELDS = ["startDate", "expiryDate"];
   var AI_NUMBER_FIELDS = ["value", "noticeDays"];
 
@@ -801,7 +843,12 @@
     var selectInstructions = Object.keys(AI_SELECT_FIELDS).map(function (k) {
       return k + " (pick exactly one of: " + AI_SELECT_FIELDS[k].join(" | ") + " - empty string if you can't tell)";
     }).join(", ");
+    var ownNames = STATE.entities.filter(function (e) { return e && DEFAULT_ENTITIES.indexOf(e) === -1; });
+    var ownNamesNote = ownNames.length
+      ? "Our own company is one of: " + ownNames.join(" | ") + " - never put one of these into counterparty. "
+      : "";
     var prompt = "You are filling in a contract-register form from the contract text below. " +
+      ownNamesNote +
       "Return ONLY a JSON object (no markdown, no commentary) with these keys:\n" +
       "title (the contract's name/title), counterparty (the other party's full legal name, not our own entity), " +
       "governingLaw (the jurisdiction whose laws govern the contract), paymentTerms (e.g. \"Net 30\"), " +
@@ -1109,6 +1156,7 @@
         }
         data.value = data.value ? Number(data.value) : null;
         data.noticeDays = data.noticeDays ? Number(data.noticeDays) : null;
+        UPPERCASE_FIELDS.forEach(function (k) { if (typeof data[k] === "string") data[k] = data[k].toUpperCase(); });
 
         if (UI.modal.mode === "edit") {
           var id = UI.modal.id;

@@ -258,6 +258,8 @@ select.chip-select { padding: 7px 10px; font-size: 12.5px; }
 .modal-head h2 { font-size: 17px; }
 .modal-body { padding: 22px 24px; max-height: 68vh; overflow-y: auto; }
 .modal-foot { padding: 16px 24px; border-top: 1px solid var(--border); display: flex; justify-content: flex-end; gap: 10px; }
+#contract-form input[type="text"], #contract-form textarea { text-transform: uppercase; }
+#contract-form input[type="text"]::placeholder, #contract-form textarea::placeholder { text-transform: none; }
 .field-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 14px 16px; }
 @media (max-width: 560px) { .field-grid { grid-template-columns: 1fr; } }
 .field { display: flex; flex-direction: column; gap: 5px; }
