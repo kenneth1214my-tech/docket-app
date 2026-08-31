@@ -163,6 +163,7 @@ button { font-family: inherit; }
   background: var(--surface); border: 1px solid var(--border); border-radius: 12px;
   padding: 16px 16px 14px; box-shadow: var(--shadow);
   transition: transform 0.14s ease, box-shadow 0.14s ease, border-color 0.14s ease;
+  font: inherit; text-align: left; width: 100%; cursor: pointer; display: block;
 }
 .kpi:hover { transform: translateY(-1px); border-color: var(--border-strong); }
 .kpi .label-row { display: flex; align-items: center; justify-content: space-between; gap: 8px; }
@@ -210,7 +211,11 @@ button { font-family: inherit; }
 
 .radar { display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; padding: 18px 20px; }
 @media (max-width: 760px) { .radar { grid-template-columns: repeat(2, 1fr); } }
-.radar-cell { border-radius: 10px; padding: 12px 14px; }
+.radar-cell {
+  border-radius: 10px; padding: 12px 14px; border: none; font: inherit; text-align: left;
+  cursor: pointer; width: 100%; display: block; transition: filter 0.12s ease, transform 0.12s ease;
+}
+.radar-cell:hover { filter: brightness(0.95); transform: translateY(-1px); }
 .radar-cell .n { font-family: var(--font-mono); font-size: 22px; font-weight: 500; font-variant-numeric: tabular-nums; }
 .radar-cell .l { font-size: 11.5px; font-weight: 600; margin-top: 2px; opacity: 0.85; }
 .radar-cell.overdue, .radar-cell.critical { background: var(--danger-bg); color: var(--danger); }
@@ -256,6 +261,18 @@ select.chip-select { padding: 7px 10px; font-size: 12.5px; }
 .top-list { list-style: none; margin: 0; padding: 0; }
 .top-list li { display: flex; align-items: center; gap: 12px; padding: 10px 20px; border-bottom: 1px solid var(--border); }
 .top-list li:last-child { border-bottom: none; }
+.top-list li.clickable, .bar-row.clickable, tr.clickable-row { cursor: pointer; transition: background 0.12s ease; }
+.top-list li.clickable:hover, .bar-row.clickable:hover { background: var(--surface-2); }
+.bar-row.clickable { border-radius: 6px; margin: 0 -6px; padding: 0 6px; }
+.active-filter-chip {
+  display: inline-flex; align-items: center; gap: 6px; padding: 6px 8px 6px 12px;
+  border-radius: 999px; background: var(--primary-tint); color: var(--primary);
+  font-size: 12px; font-weight: 600; white-space: nowrap;
+}
+.active-filter-chip button {
+  background: none; border: none; color: inherit; cursor: pointer; font-size: 15px;
+  line-height: 1; padding: 0 2px; display: inline-flex; align-items: center;
+}
 .top-list .rank { font-family: var(--font-mono); color: var(--ink-faint); font-size: 12px; width: 16px; }
 .top-list .info { flex: 1; min-width: 0; }
 .top-list .info .t { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }

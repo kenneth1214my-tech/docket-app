@@ -88,6 +88,7 @@
       modal_clear_body_pre: "This permanently deletes all",
       modal_clear_body_post: "contract(s) from this browser. Export a backup first if you want to keep a copy. This can’t be undone.",
       clear_everything: "Clear everything",
+      clear_filter: "Clear filter",
 
       modal_edit_title: "Edit contract",
       modal_new_title: "New contract",
@@ -247,6 +248,7 @@
       modal_clear_body_pre: "此操作将永久删除此浏览器中的全部",
       modal_clear_body_post: "份合同。如需保留备份，请先导出数据。此操作无法撤销。",
       clear_everything: "清除全部",
+      clear_filter: "清除筛选",
 
       modal_edit_title: "编辑合同",
       modal_new_title: "新建合同",
@@ -406,6 +408,7 @@
       modal_clear_body_pre: "Ini akan memadam secara kekal kesemua",
       modal_clear_body_post: "kontrak daripada pelayar ini. Eksport sandaran dahulu jika mahu simpan salinan. Tindakan ini tidak boleh dibatalkan.",
       clear_everything: "Kosongkan semuanya",
+      clear_filter: "Kosongkan penapis",
 
       modal_edit_title: "Sunting kontrak",
       modal_new_title: "Kontrak baharu",
@@ -565,6 +568,7 @@
       modal_clear_body_pre: "이 브라우저에 저장된 계약 전체(",
       modal_clear_body_post: "건)가 영구적으로 삭제됩니다. 보관이 필요하면 먼저 내보내기하세요. 이 작업은 되돌릴 수 없습니다.",
       clear_everything: "전체 삭제",
+      clear_filter: "필터 지우기",
 
       modal_edit_title: "계약 수정",
       modal_new_title: "새 계약",
@@ -724,6 +728,7 @@
       modal_clear_body_pre: "このブラウザ内の契約",
       modal_clear_body_post: "件すべてが完全に削除されます。控えが必要な場合は先にエクスポートしてください。この操作は取り消せません。",
       clear_everything: "すべて消去",
+      clear_filter: "フィルターをクリア",
 
       modal_edit_title: "契約を編集",
       modal_new_title: "新規契約",
@@ -883,6 +888,7 @@
       modal_clear_body_pre: "Ini akan menghapus permanen seluruh",
       modal_clear_body_post: "kontrak dari peramban ini. Ekspor cadangan dulu jika ingin menyimpan salinan. Tindakan ini tidak dapat dibatalkan.",
       clear_everything: "Hapus semuanya",
+      clear_filter: "Hapus filter",
 
       modal_edit_title: "Ubah kontrak",
       modal_new_title: "Kontrak baru",
@@ -1042,6 +1048,7 @@
       modal_clear_body_pre: "Permanente nitong bubura ang lahat ng",
       modal_clear_body_post: "kontrata sa browser na ito. Mag-export muna ng backup kung gusto mong magtago ng kopya. Hindi na ito maibabalik.",
       clear_everything: "Burahin lahat",
+      clear_filter: "I-clear ang filter",
 
       modal_edit_title: "I-edit ang kontrata",
       modal_new_title: "Bagong kontrata",

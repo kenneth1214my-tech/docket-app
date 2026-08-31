@@ -99,8 +99,27 @@
     search: "",
     statusFilter: "all",
     riskFilter: "all",
+    alertFilter: "all", // set only by dashboard clicks - no dropdown of its own
+    contractTypeFilter: "all", // set only by dashboard clicks - no dropdown of its own
+    currencyFilter: "all", // set only by dashboard clicks - no dropdown of its own
     modal: null
   };
+
+  // Every dashboard click routes through here: switches to the register and
+  // replaces the whole filter set (rather than merging), so one click can't
+  // leave a stale filter from a previous click combined in unexpectedly.
+  function gotoRegisterFiltered(opts) {
+    opts = opts || {};
+    UI.view = "register";
+    UI.search = "";
+    UI.statusFilter = opts.status || "all";
+    UI.riskFilter = opts.risk || "all";
+    UI.alertFilter = opts.alert || "all";
+    UI.contractTypeFilter = opts.type || "all";
+    UI.currencyFilter = opts.currency || "all";
+    sessionStorage.setItem("docket_ui_view", UI.view);
+    render();
+  }
 
   function slugClass(s) { return String(s || "").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/(^-|-$)/g, ""); }
   function esc(s) {
@@ -317,10 +336,23 @@
     );
   }
 
-  function kpi(label, value, iconKey, tone) {
-    return '<div class="kpi' + (tone ? " tone-" + tone : "") + '"><div class="label-row"><div class="label">' + esc(label) + "</div>" +
+  // Every dashboard element that jumps to a filtered register view shares
+  // this one set of data-* attributes, read back generically in bindEvents.
+  function filterDataAttrs(opts) {
+    opts = opts || {};
+    var attrs = ' data-action="goto-register"';
+    if (opts.status) attrs += ' data-status="' + esc(opts.status) + '"';
+    if (opts.risk) attrs += ' data-risk="' + esc(opts.risk) + '"';
+    if (opts.alert) attrs += ' data-alert="' + esc(opts.alert) + '"';
+    if (opts.type) attrs += ' data-type="' + esc(opts.type) + '"';
+    if (opts.currency) attrs += ' data-currency="' + esc(opts.currency) + '"';
+    return attrs;
+  }
+
+  function kpi(label, value, iconKey, tone, filterOpts) {
+    return '<button type="button" class="kpi' + (tone ? " tone-" + tone : "") + '"' + filterDataAttrs(filterOpts) + '><div class="label-row"><div class="label">' + esc(label) + "</div>" +
       (iconKey ? '<span class="kpi-icon">' + KPI_ICONS[iconKey] + "</span>" : "") +
-      '</div><div class="value">' + value + "</div></div>";
+      '</div><div class="value">' + value + "</div></button>";
   }
 
   function renderDashboard() {
@@ -351,11 +383,11 @@
     return (
       '<div class="topbar"><div><h1>' + esc(t("dash_title")) + "</h1><div class=\"sub\">" + esc(t("dash_sub")) + "</div></div></div>" +
       '<div class="kpi-grid">' +
-        kpi(t("kpi_total"), total, "total") +
-        kpi(t("kpi_active"), active, "active", "success") +
-        kpi(t("kpi_expiring"), expiringSoon, "clock", expiringSoon > 0 ? "warning" : null) +
-        kpi(t("kpi_overdue"), overdueOrExpired, "alert", overdueOrExpired > 0 ? "danger" : null) +
-        kpi(t("kpi_critical"), criticalRisk, "shield", criticalRisk > 0 ? "danger" : null) +
+        kpi(t("kpi_total"), total, "total", null, {}) +
+        kpi(t("kpi_active"), active, "active", "success", { status: "Active" }) +
+        kpi(t("kpi_expiring"), expiringSoon, "clock", expiringSoon > 0 ? "warning" : null, { status: "Expiring Soon" }) +
+        kpi(t("kpi_overdue"), overdueOrExpired, "alert", overdueOrExpired > 0 ? "danger" : null, { alert: "overdue_or_expired" }) +
+        kpi(t("kpi_critical"), criticalRisk, "shield", criticalRisk > 0 ? "danger" : null, { risk: "Critical" }) +
       "</div>" +
       renderPortfolioPanel(cs) +
       '<div class="panel">' +
@@ -371,7 +403,7 @@
       '<div class="panel">' +
         '<div class="panel-head"><h2>' + esc(t("soonest_title")) + '</h2><span class="hint">' + esc(t("soonest_hint_top")) + " " + withDays.length + "</span></div>" +
         (withDays.length ? '<ul class="top-list">' + withDays.map(function (x, i) {
-          return '<li><span class="rank">#' + (i + 1) + '</span>' +
+          return '<li class="clickable" role="button" tabindex="0" data-action="edit" data-id="' + esc(x.c.id) + '"><span class="rank">#' + (i + 1) + '</span>' +
             '<div class="info"><div class="t">' + esc(x.c.title) + '</div><div class="s">' + esc(x.c.counterparty) + " · " + esc(tx(x.c.entity)) + "</div></div>" +
             '<span class="pill alert-' + x.a.key + '">' + esc(x.a.label) + "</span></li>";
         }).join("") + "</ul>" : '<div class="empty-state" style="padding:24px"><p>' + esc(t("soonest_empty")) + "</p></div>") +
@@ -380,7 +412,7 @@
         '<div class="panel-head"><h2>' + esc(t("value_title")) + "</h2></div>" +
         '<div class="panel-body table-wrap"><table><thead><tr><th>' + esc(t("col_currency")) + '</th><th class="num">' + esc(t("col_total_value")) + "</th></tr></thead><tbody>" +
         (Object.keys(byCurrency).length ? Object.keys(byCurrency).map(function (k) {
-          return "<tr><td>" + esc(k) + '</td><td class="num">' + fmtMoney(byCurrency[k], k) + "</td></tr>";
+          return '<tr class="clickable-row" role="button" tabindex="0"' + filterDataAttrs({ status: "Active", currency: k }) + "><td>" + esc(k) + '</td><td class="num">' + fmtMoney(byCurrency[k], k) + "</td></tr>";
         }).join("") : '<tr><td colspan="2" style="color:var(--ink-faint)">' + esc(t("value_empty")) + "</td></tr>") +
         "</tbody></table></div>" +
       "</div>"
@@ -413,7 +445,7 @@
   }
 
   function radarCell(key, label, n) {
-    return '<div class="radar-cell ' + key + '"><div class="n">' + n + '</div><div class="l">' + esc(label) + "</div></div>";
+    return '<button type="button" class="radar-cell ' + key + '"' + filterDataAttrs({ alert: key }) + '><div class="n">' + n + '</div><div class="l">' + esc(label) + "</div></button>";
   }
 
   function statusTone(status) {
@@ -427,9 +459,9 @@
     return { Critical: "critical", High: "high", Medium: "medium", Low: "low" }[risk] || "neutral";
   }
 
-  function barRow(label, value, max, tone) {
+  function barRow(label, value, max, tone, filterOpts) {
     var pct = max > 0 ? Math.max((value / max) * 100, value > 0 ? 4 : 0) : 0;
-    return '<div class="bar-row"><div class="bar-label" title="' + esc(label) + '">' + esc(label) + '</div>' +
+    return '<div class="bar-row clickable" role="button" tabindex="0"' + filterDataAttrs(filterOpts) + '><div class="bar-label" title="' + esc(label) + '">' + esc(label) + '</div>' +
       '<div class="bar-track"><div class="bar-fill tone-' + tone + '" style="width:' + pct + '%"></div></div>' +
       '<div class="bar-value">' + value + "</div></div>";
   }
@@ -459,19 +491,28 @@
         '<div class="bar-list bar-columns">' +
           "<div>" +
             '<div class="bar-col-title">' + esc(t("col_status")) + "</div>" +
-            statusesUsed.map(function (s) { return barRow(tx(s), statusCounts[s], maxStatus, statusTone(s)); }).join("") +
+            statusesUsed.map(function (s) { return barRow(tx(s), statusCounts[s], maxStatus, statusTone(s), { status: s }); }).join("") +
           "</div>" +
           "<div>" +
             '<div class="bar-col-title">' + esc(t("col_risk")) + "</div>" +
-            TAXONOMY.riskTiers.map(function (r) { return barRow(tx(r), riskCounts[r], maxRisk, riskTone(r)); }).join("") +
+            TAXONOMY.riskTiers.map(function (r) { return barRow(tx(r), riskCounts[r], maxRisk, riskTone(r), { risk: r }); }).join("") +
           "</div>" +
         "</div>" +
         (typesUsed.length ? '<div class="bar-list bar-type-list">' +
           '<div class="bar-col-title">' + esc(t("col_contract_type")) + "</div>" +
-          typesUsed.map(function (ct) { return barRow(tx(ct), typeCounts[ct], maxType, "primary"); }).join("") +
+          typesUsed.map(function (ct) { return barRow(tx(ct), typeCounts[ct], maxType, "primary", { type: ct }); }).join("") +
         "</div>" : "") +
       "</div>"
     );
+  }
+
+  var ALERT_FILTER_LABEL_KEYS = { overdue: "radar_overdue", critical: "radar_critical", warning: "radar_warning", watch: "radar_watch", ok: "radar_ok", overdue_or_expired: "kpi_overdue" };
+  function extraFilterLabel() {
+    var parts = [];
+    if (UI.alertFilter !== "all") parts.push(t(ALERT_FILTER_LABEL_KEYS[UI.alertFilter] || UI.alertFilter).split(" · ")[0]);
+    if (UI.contractTypeFilter !== "all") parts.push(tx(UI.contractTypeFilter));
+    if (UI.currencyFilter !== "all") parts.push(UI.currencyFilter);
+    return parts.join(" · ");
   }
 
   function renderRegister() {
@@ -484,6 +525,15 @@
     }
     if (UI.statusFilter !== "all") cs = cs.filter(function (c) { return c.status === UI.statusFilter; });
     if (UI.riskFilter !== "all") cs = cs.filter(function (c) { return c.riskTier === UI.riskFilter; });
+    if (UI.contractTypeFilter !== "all") cs = cs.filter(function (c) { return c.contractType === UI.contractTypeFilter; });
+    if (UI.currencyFilter !== "all") cs = cs.filter(function (c) { return c.currency === UI.currencyFilter; });
+    if (UI.alertFilter !== "all") {
+      cs = cs.filter(function (c) {
+        var a = computeAlert(c);
+        if (UI.alertFilter === "overdue_or_expired") return c.status === "Expired" || a.key === "overdue";
+        return a.key === UI.alertFilter;
+      });
+    }
 
     var rows = cs.map(function (c) { return { c: c, a: computeAlert(c) }; }).sort(function (x, y) {
       var dx = x.a.days === null ? Infinity : x.a.days;
@@ -502,6 +552,7 @@
           '<div class="search-input"><input type="text" id="search-box" placeholder="' + esc(t("search_placeholder")) + '" value="' + esc(UI.search) + '"></div>' +
           selectChip("status-filter", ["all"].concat(TAXONOMY.statuses), UI.statusFilter, t("filter_all_statuses")) +
           selectChip("risk-filter", ["all"].concat(TAXONOMY.riskTiers), UI.riskFilter, t("filter_all_risks")) +
+          (extraFilterLabel() ? '<span class="active-filter-chip">' + esc(extraFilterLabel()) + '<button type="button" data-action="clear-extra-filter" aria-label="' + esc(t("clear_filter")) + '">&times;</button></span>' : "") +
         "</div>") +
         '<div class="table-wrap">' +
         (rows.length ? '<table><thead><tr><th>' + esc(t("col_contract")) + '</th><th>' + esc(t("col_entity")) + '</th><th>' + esc(t("col_counterparty")) + '</th><th>' + esc(t("col_risk")) + '</th><th>' + esc(t("col_status")) + '</th><th>' + esc(t("col_expiry")) + '</th><th>' + esc(t("col_alert")) + '</th><th class="num">' + esc(t("col_value")) + "</th><th></th></tr></thead><tbody>" +
@@ -965,6 +1016,32 @@
         sessionStorage.setItem("docket_ui_view", UI.view);
         render();
       });
+    });
+
+    document.querySelectorAll('[data-action="goto-register"]').forEach(function (el) {
+      el.addEventListener("click", function () {
+        gotoRegisterFiltered({
+          status: el.getAttribute("data-status"),
+          risk: el.getAttribute("data-risk"),
+          alert: el.getAttribute("data-alert"),
+          type: el.getAttribute("data-type"),
+          currency: el.getAttribute("data-currency")
+        });
+      });
+    });
+    // Keyboard activation for the non-<button> clickable elements (bar rows,
+    // the currency table's rows) - real <button>s already do this natively,
+    // so this is scoped to only the ones we explicitly marked role="button".
+    document.querySelectorAll('[data-action="goto-register"][role="button"], [data-action="edit"][role="button"]').forEach(function (el) {
+      el.addEventListener("keydown", function (e) {
+        if (e.key === "Enter" || e.key === " ") { e.preventDefault(); el.click(); }
+      });
+    });
+    var clearExtraFilterBtn = document.querySelector('[data-action="clear-extra-filter"]');
+    if (clearExtraFilterBtn) clearExtraFilterBtn.addEventListener("click", function (e) {
+      e.stopPropagation();
+      UI.alertFilter = "all"; UI.contractTypeFilter = "all"; UI.currencyFilter = "all";
+      render();
     });
 
     var langSelect = document.getElementById("lang-select");
