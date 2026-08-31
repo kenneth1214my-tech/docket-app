@@ -147,11 +147,34 @@
     var exp = new Date(c.expiryDate + "T00:00:00");
     if (isNaN(exp)) return { days: null, key: "na", label: "N/A" };
     var days = Math.round((exp - todayMidnight()) / 86400000);
-    if (days < 0) return { days: days, key: "overdue", label: t("radar_overdue") + " · " + Math.abs(days) + "d" };
+    if (days < 0) {
+      // "Overdue" reads as an ongoing, actionable situation - fine for a
+      // contract that lapsed last week, misleading for one that lapsed
+      // years ago and was simply never updated. Past a quarter, call it
+      // what it is instead of implying someone still needs to act today.
+      var overdueDays = Math.abs(days);
+      var wording = overdueDays > 90 ? t("alert_ended") : t("radar_overdue");
+      return { days: days, key: "overdue", label: wording + " · " + overdueDays + "d" };
+    }
     if (days <= 30) return { days: days, key: "critical", label: t("radar_critical").split(" · ")[0] + " · " + days + "d" };
     if (days <= 60) return { days: days, key: "warning", label: t("radar_warning").split(" · ")[0] + " · " + days + "d" };
     if (days <= 90) return { days: days, key: "watch", label: t("radar_watch").split(" · ")[0] + " · " + days + "d" };
     return { days: days, key: "ok", label: t("radar_ok").split(" · ")[0] + " · " + days + "d" };
+  }
+
+  // Ranks alerts by actual urgency, not raw signed day-count. Sorting on
+  // plain `days` put a contract lapsed 899 days ago ahead of one expiring
+  // in 20 days, since -899 < 20 - exactly backwards. Upcoming expiries
+  // (soonest first) always outrank anything already overdue; among overdue
+  // ones, the most recently lapsed outranks one abandoned years ago; N/A
+  // (closed-out or dateless) always sorts last.
+  function compareByAlert(a1, a2) {
+    var p1 = a1.days === null ? 2 : (a1.days < 0 ? 1 : 0);
+    var p2 = a2.days === null ? 2 : (a2.days < 0 ? 1 : 0);
+    if (p1 !== p2) return p1 - p2;
+    if (p1 === 1) return a2.days - a1.days; // overdue: most recently lapsed first
+    if (p1 === 0) return a1.days - a2.days; // upcoming: soonest first
+    return 0;
   }
 
   function nextContractId(contracts, year) {
@@ -371,7 +394,7 @@
 
     var withDays = cs.map(function (c, i) { return { c: c, a: alerts[i] }; })
       .filter(function (x) { return x.a.days !== null; })
-      .sort(function (x, y) { return x.a.days - y.a.days; })
+      .sort(function (x, y) { return compareByAlert(x.a, y.a); })
       .slice(0, 8);
 
     var byCurrency = {};
@@ -509,7 +532,9 @@
   var ALERT_FILTER_LABEL_KEYS = { overdue: "radar_overdue", critical: "radar_critical", warning: "radar_warning", watch: "radar_watch", ok: "radar_ok", overdue_or_expired: "kpi_overdue" };
   function extraFilterLabel() {
     var parts = [];
-    if (UI.alertFilter !== "all") parts.push(t(ALERT_FILTER_LABEL_KEYS[UI.alertFilter] || UI.alertFilter).split(" · ")[0]);
+    // "overdue_or_expired" has its own toggle button in the filters bar
+    // (see renderRegister) - no need to repeat it in the chip too.
+    if (UI.alertFilter !== "all" && UI.alertFilter !== "overdue_or_expired") parts.push(t(ALERT_FILTER_LABEL_KEYS[UI.alertFilter] || UI.alertFilter).split(" · ")[0]);
     if (UI.contractTypeFilter !== "all") parts.push(tx(UI.contractTypeFilter));
     if (UI.currencyFilter !== "all") parts.push(UI.currencyFilter);
     return parts.join(" · ");
@@ -536,9 +561,7 @@
     }
 
     var rows = cs.map(function (c) { return { c: c, a: computeAlert(c) }; }).sort(function (x, y) {
-      var dx = x.a.days === null ? Infinity : x.a.days;
-      var dy = y.a.days === null ? Infinity : y.a.days;
-      return dx - dy;
+      return compareByAlert(x.a, y.a);
     });
 
     var isEmptyRegister = STATE.contracts.length === 0;
@@ -552,6 +575,7 @@
           '<div class="search-input"><input type="text" id="search-box" placeholder="' + esc(t("search_placeholder")) + '" value="' + esc(UI.search) + '"></div>' +
           selectChip("status-filter", ["all"].concat(TAXONOMY.statuses), UI.statusFilter, t("filter_all_statuses")) +
           selectChip("risk-filter", ["all"].concat(TAXONOMY.riskTiers), UI.riskFilter, t("filter_all_risks")) +
+          '<button type="button" class="filter-toggle-btn' + (UI.alertFilter === "overdue_or_expired" ? " active" : "") + '" data-action="toggle-overdue-filter">' + esc(t("filter_overdue_expired")) + "</button>" +
           (extraFilterLabel() ? '<span class="active-filter-chip">' + esc(extraFilterLabel()) + '<button type="button" data-action="clear-extra-filter" aria-label="' + esc(t("clear_filter")) + '">&times;</button></span>' : "") +
         "</div>") +
         '<div class="table-wrap">' +
@@ -1036,6 +1060,11 @@
       el.addEventListener("keydown", function (e) {
         if (e.key === "Enter" || e.key === " ") { e.preventDefault(); el.click(); }
       });
+    });
+    var toggleOverdueBtn = document.querySelector('[data-action="toggle-overdue-filter"]');
+    if (toggleOverdueBtn) toggleOverdueBtn.addEventListener("click", function () {
+      UI.alertFilter = (UI.alertFilter === "overdue_or_expired") ? "all" : "overdue_or_expired";
+      render();
     });
     var clearExtraFilterBtn = document.querySelector('[data-action="clear-extra-filter"]');
     if (clearExtraFilterBtn) clearExtraFilterBtn.addEventListener("click", function (e) {
