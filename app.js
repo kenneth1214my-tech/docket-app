@@ -249,7 +249,7 @@
       t("f_startDate"), t("f_term"), t("f_expiryDate"), t("col_alert"), t("f_autoRenewal"), t("f_noticeDays"),
       t("f_value"), t("f_currency"), t("f_paymentTerms"), t("f_governingLaw"),
       t("f_obligations"), t("f_terminationClause"), t("f_liabilityNotes"), t("f_tags"), t("f_notes"),
-      t("view_original_document")];
+      t("view_original_document"), t("fs_addendums")];
     var rows = STATE.contracts.map(function (c) {
       var a = computeAlert(c);
       return [
@@ -261,7 +261,8 @@
         c.noticeDays != null && c.noticeDays !== "" ? Number(c.noticeDays) : "",
         c.value != null && c.value !== "" ? Number(c.value) : "", c.currency || "", c.paymentTerms || "",
         c.governingLaw || "", c.obligations || "", c.terminationClause || "", c.liabilityNotes || "",
-        c.tags || "", c.notes || "", c.fileUrl || ""
+        c.tags || "", c.notes || "", c.fileUrl || "",
+        c.addendums && c.addendums.length ? c.addendums.length : ""
       ];
     });
     var aoa = [headers].concat(rows);
@@ -590,7 +591,9 @@
           rows.map(function (x) {
             var c = x.c, a = x.a;
             return "<tr>" +
-              '<td><div class="cell-title">' + esc(c.title) + '</div><div class="cell-sub mono">' + esc(c.id) + "</div></td>" +
+              '<td><div class="cell-title">' + esc(c.title) +
+                (c.addendums && c.addendums.length ? ' <span class="addendum-badge" title="' + esc(c.addendums.length + " " + t("addendums_badge_label")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6" width="11" height="11"><path d="M13 6.5v7a3 3 0 0 1-6 0v-8a2 2 0 0 1 4 0v7a1 1 0 0 1-2 0v-6" stroke-linecap="round"/></svg>' + c.addendums.length + "</span>" : "") +
+              '</div><div class="cell-sub mono">' + esc(c.id) + "</div></td>" +
               "<td>" + esc(tx(c.entity)) + "</td>" +
               "<td>" + esc(c.counterparty) + "</td>" +
               '<td><span class="pill risk-' + slugClass(c.riskTier) + '">' + esc(tx(c.riskTier) || "—") + "</span></td>" +
@@ -655,6 +658,7 @@
     if (UI.modal.mode === "clear-all") return renderClearAllModal();
     if (UI.modal.mode === "manage-entities") return renderEntitiesModal();
     if (UI.modal.mode === "ai-settings") return renderAiSettingsModal();
+    if (UI.modal.mode === "add-addendum") return renderAddAddendumModal();
     return renderFormModal();
   }
 
@@ -774,6 +778,53 @@
     "</div>";
   }
 
+  function renderAddendumsSection(c) {
+    var list = c.addendums || [];
+    var rows = list.map(function (am, idx) {
+      return '<div class="addendum-row">' +
+        '<div class="addendum-main">' +
+          '<div class="addendum-title-line"><strong>' + esc(am.title) + '</strong><span class="addendum-date mono">' + fmtDate(am.date) + "</span></div>" +
+          (am.notes ? '<div class="addendum-notes">' + esc(am.notes) + "</div>" : "") +
+          (am.fileUrl ? '<a class="addendum-file-link" href="' + esc(am.fileUrl) + '" target="_blank" rel="noopener">' + esc(t("view_original_document")) + (am.fileName ? " (" + esc(am.fileName) + ")" : "") + "</a>" : "") +
+        "</div>" +
+        '<button type="button" class="icon-btn" data-action="remove-addendum" data-index="' + idx + '" aria-label="' + esc(t("delete")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h12M8 6V4h4v2m-7 0 1 11h8l1-11"/></svg></button>' +
+      "</div>";
+    }).join("");
+    return '<div class="fieldset-title">' + esc(t("fs_addendums")) + "</div>" +
+      '<div class="addendum-list">' + (rows || '<div class="addendum-empty">' + esc(t("addendums_empty")) + "</div>") + "</div>" +
+      '<button type="button" class="btn btn-ghost btn-sm" data-action="add-addendum" data-id="' + esc(c.id) + '">' + esc(t("add_addendum_btn")) + "</button>";
+  }
+
+  function renderAddendumUploadZone() {
+    var m = UI.modal;
+    if (m.fileUploadStatus === "uploading") {
+      return '<div class="field full"><label>' + esc(t("f_addendum_file")) + "</label><div class=\"upload-storage-status\">" + esc(t("upload_storing")) + "</div></div>";
+    }
+    if (m.fileUrl) {
+      return '<div class="field full"><label>' + esc(t("f_addendum_file")) + "</label><div class=\"upload-storage-status ok\">" + esc(m.fileName || "") + " — " + esc(t("upload_stored")) + "</div></div>";
+    }
+    var errLine = m.fileUploadStatus === "error" ? '<div class="upload-storage-status err">' + esc(t("upload_store_failed_prefix")) + esc(m.fileUploadError || "") + "</div>" : "";
+    return '<div class="field full"><label>' + esc(t("f_addendum_file")) + '</label><input type="file" id="addendum-file-input" accept=".pdf,.docx,.txt,.jpg,.jpeg,.png,.webp">' + errLine + "</div>";
+  }
+
+  function renderAddAddendumModal() {
+    var m = UI.modal;
+    return (
+      '<div class="modal-overlay" data-overlay>' +
+        '<div class="modal">' +
+          '<div class="modal-head"><h2>' + esc(t("addendum_modal_title")) + "</h2><button class=\"icon-btn\" data-action=\"close-modal\" aria-label=\"" + esc(t("cancel")) + "\"><svg viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><path d=\"M5 5l10 10M15 5L5 15\"/></svg></button></div>" +
+          '<div class="modal-body">' +
+            '<div class="field full"><label>' + esc(t("f_addendum_title")) + ' <span class="req">*</span></label><input type="text" id="addendum-title-input" value="' + esc(m.title || "") + '"></div>' +
+            '<div class="field full"><label>' + esc(t("f_addendum_date")) + ' <span class="req">*</span></label><input type="date" id="addendum-date-input" value="' + esc(m.date || "") + '"></div>' +
+            '<div class="field full"><label>' + esc(t("f_notes")) + '</label><textarea id="addendum-notes-input" rows="2">' + esc(m.notes || "") + "</textarea></div>" +
+            '<div id="addendum-upload-zone-wrap">' + renderAddendumUploadZone() + "</div>" +
+          "</div>" +
+          '<div class="modal-foot"><button type="button" class="btn btn-ghost" data-action="close-modal">' + esc(t("cancel")) + '</button><button type="button" class="btn btn-primary" data-action="save-addendum">' + esc(t("save_addendum_btn")) + "</button></div>" +
+        "</div>" +
+      "</div>"
+    );
+  }
+
   function renderFormModal() {
     var editing = UI.modal.mode === "edit";
     var c = editing ? STATE.contracts.find(function (x) { return x.id === UI.modal.id; }) : (UI.modal.draft || {});
@@ -818,6 +869,7 @@
             fieldTextarea("liabilityNotes", t("f_liabilityNotes"), c.liabilityNotes) +
             fieldInput("tags", t("f_tags"), c.tags, "text", false, true) +
             fieldTextarea("notes", t("f_notes"), c.notes) +
+            (editing ? renderAddendumsSection(c) : "") +
           "</div>" +
           '<div class="modal-foot"><button type="button" class="btn btn-ghost" data-action="close-modal">' + esc(t("cancel")) + '</button><button type="submit" class="btn btn-primary"' + (!editing && UI.modal.reading ? " disabled" : "") + '>' + (editing ? esc(t("save_changes")) : esc(t("add_contract_btn"))) + "</button></div>" +
           "</form>" +
@@ -1187,6 +1239,86 @@
       el.addEventListener("click", function () {
         var returnTo = (UI.modal && (UI.modal.mode === "add" || UI.modal.mode === "edit")) ? UI.modal : null;
         UI.modal = { mode: "ai-settings", returnTo: returnTo };
+        render();
+      });
+    });
+
+    var addAddendumBtn = document.querySelector('[data-action="add-addendum"]');
+    if (addAddendumBtn) addAddendumBtn.addEventListener("click", function () {
+      UI.modal = {
+        mode: "add-addendum",
+        contractId: addAddendumBtn.getAttribute("data-id"),
+        returnTo: UI.modal,
+        title: "", date: "", notes: "",
+        fileUrl: null, fileName: null, fileUploadStatus: null, fileUploadError: null
+      };
+      render();
+    });
+    // Partial refresh only (never the full render()) - this modal's title/
+    // date/notes inputs aren't backed by UI.modal state, so a full render
+    // while the upload is in flight would silently wipe out anything the
+    // user had already typed, the same bug fixed earlier for other modals.
+    function refreshAddendumUploadZone() {
+      var wrap = document.getElementById("addendum-upload-zone-wrap");
+      if (wrap) wrap.innerHTML = renderAddendumUploadZone();
+      bindAddendumFileInput();
+    }
+    function bindAddendumFileInput() {
+      var addendumFileInput = document.getElementById("addendum-file-input");
+      if (!addendumFileInput) return;
+      addendumFileInput.addEventListener("change", function () {
+        var file = addendumFileInput.files && addendumFileInput.files[0];
+        if (!file) return;
+        var modalRef = UI.modal;
+        modalRef.fileUploadStatus = "uploading";
+        modalRef.fileUploadError = null;
+        modalRef.fileName = file.name;
+        refreshAddendumUploadZone();
+        uploadFileToBackend(file).then(function (result) {
+          if (UI.modal !== modalRef) return;
+          modalRef.fileUrl = result.url;
+          modalRef.fileUploadStatus = "done";
+          refreshAddendumUploadZone();
+        }).catch(function (err) {
+          if (UI.modal !== modalRef) return;
+          modalRef.fileUploadStatus = "error";
+          modalRef.fileUploadError = err && err.message ? err.message : String(err);
+          refreshAddendumUploadZone();
+        });
+      });
+    }
+    bindAddendumFileInput();
+    var saveAddendumBtn = document.querySelector('[data-action="save-addendum"]');
+    if (saveAddendumBtn) saveAddendumBtn.addEventListener("click", function () {
+      var title = document.getElementById("addendum-title-input").value.trim();
+      var date = document.getElementById("addendum-date-input").value;
+      if (!title || !date) { showToast(t("toast_addendum_required")); return; }
+      var notes = document.getElementById("addendum-notes-input").value.trim();
+      var m = UI.modal;
+      var next = JSON.parse(JSON.stringify(STATE));
+      var contract = next.contracts.find(function (x) { return x.id === m.contractId; });
+      if (contract) {
+        if (!Array.isArray(contract.addendums)) contract.addendums = [];
+        contract.addendums.push({
+          title: title.toUpperCase(), date: date, notes: notes.toUpperCase(),
+          fileUrl: m.fileUrl || null, fileName: m.fileUrl ? (m.fileName || null) : null
+        });
+        STATE = next;
+        saveState(STATE);
+      }
+      UI.modal = m.returnTo || null;
+      render();
+      showToast(t("toast_addendum_added"));
+    });
+    document.querySelectorAll('[data-action="remove-addendum"]').forEach(function (el) {
+      el.addEventListener("click", function () {
+        var idx = Number(el.getAttribute("data-index"));
+        var contractId = UI.modal.id;
+        var next = JSON.parse(JSON.stringify(STATE));
+        var contract = next.contracts.find(function (x) { return x.id === contractId; });
+        if (contract && Array.isArray(contract.addendums)) contract.addendums.splice(idx, 1);
+        STATE = next;
+        saveState(STATE);
         render();
       });
     });
