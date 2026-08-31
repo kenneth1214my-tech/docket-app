@@ -208,7 +208,10 @@
       try {
         var parsed = JSON.parse(reader.result);
         if (!parsed || !Array.isArray(parsed.contracts)) throw new Error("File does not look like a Docket export.");
-        persist(function (next) { next.contracts = parsed.contracts; }, "toast_imported");
+        persist(function (next) {
+          next.contracts = parsed.contracts;
+          if (Array.isArray(parsed.entities) && parsed.entities.length) next.entities = parsed.entities;
+        }, "toast_imported");
       } catch (e) {
         showToast(t("toast_import_error") + e.message);
       }
