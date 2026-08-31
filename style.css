@@ -190,7 +190,15 @@ button { font-family: inherit; }
 .bar-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px; }
 @media (max-width: 760px) { .bar-columns { grid-template-columns: 1fr; } }
 .bar-col-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); font-weight: 700; padding: 14px 0 2px; }
-.bar-type-list { border-top: 1px solid var(--border); margin-top: 2px; }
+.bar-type-list { border-top: 1px solid var(--border); margin-top: 2px; gap: 12px; }
+.bar-type-list .bar-row {
+  grid-template-columns: 1fr 34px;
+  grid-template-areas: "label label" "track value";
+  row-gap: 5px;
+}
+.bar-type-list .bar-row .bar-label { grid-area: label; overflow: visible; text-overflow: clip; white-space: normal; line-height: 1.3; }
+.bar-type-list .bar-row .bar-track { grid-area: track; }
+.bar-type-list .bar-row .bar-value { grid-area: value; }
 
 .empty-illustration { width: 88px; height: 88px; margin: 0 auto 14px; color: var(--primary); opacity: 0.85; }
 
