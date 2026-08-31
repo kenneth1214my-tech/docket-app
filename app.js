@@ -59,6 +59,18 @@
     try { window.localStorage.setItem(LANG_KEY, lang); } catch (e) { /* ignore */ }
   }
 
+  // Kept out of STATE on purpose: never bundled into export/import JSON.
+  var AI_KEY_STORAGE = "docket_ai_key_v1";
+  function loadAiKey() {
+    try { return window.localStorage.getItem(AI_KEY_STORAGE) || ""; } catch (e) { return ""; }
+  }
+  function saveAiKey(key) {
+    try {
+      if (key) window.localStorage.setItem(AI_KEY_STORAGE, key);
+      else window.localStorage.removeItem(AI_KEY_STORAGE);
+    } catch (e) { /* ignore */ }
+  }
+
   var STATE = loadState();
   var UI = {
     view: sessionStorage.getItem("docket_ui_view") || "dashboard",
@@ -241,6 +253,7 @@
           "<div><strong>" + esc(t("sidebar_data_title")) + "</strong><br>" + esc(t("sidebar_data_body")) + "</div>" +
           '<div class="sidebar-actions">' +
             '<button class="link-btn" data-action="manage-entities">' + esc(t("manage_entities")) + "</button>" +
+            '<button class="link-btn" data-action="ai-settings">' + esc(t("ai_settings")) + "</button>" +
             '<button class="link-btn" data-action="export">' + esc(t("export_data")) + "</button>" +
             '<button class="link-btn" data-action="import">' + esc(t("import_data")) + "</button>" +
             (STATE.contracts.length === 0 ? '<button class="link-btn" data-action="load-sample">' + esc(t("load_sample")) + "</button>" : '<button class="link-btn" data-action="clear-all">' + esc(t("clear_all")) + "</button>") +
@@ -483,7 +496,28 @@
     if (UI.modal.mode === "delete") return renderDeleteModal();
     if (UI.modal.mode === "clear-all") return renderClearAllModal();
     if (UI.modal.mode === "manage-entities") return renderEntitiesModal();
+    if (UI.modal.mode === "ai-settings") return renderAiSettingsModal();
     return renderFormModal();
+  }
+
+  function renderAiSettingsModal() {
+    var key = loadAiKey();
+    return (
+      '<div class="modal-overlay" data-overlay>' +
+        '<div class="modal">' +
+          '<div class="modal-head"><h2>' + esc(t("ai_settings_title")) + "</h2><button class=\"icon-btn\" data-action=\"close-modal\" aria-label=\"" + esc(t("cancel")) + "\"><svg viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><path d=\"M5 5l10 10M15 5L5 15\"/></svg></button></div>" +
+          '<div class="modal-body">' +
+            '<div class="entities-hint">' + esc(t("ai_settings_hint")) + "</div>" +
+            '<div class="field full"><label>' + esc(t("ai_settings_key_label")) + '</label><input type="password" id="ai-key-input" placeholder="sk-ant-..." value="' + esc(key) + '" autocomplete="off"></div>' +
+            (key ? '<div class="ai-key-status">' + esc(t("ai_settings_key_saved")) + "</div>" : "") +
+          "</div>" +
+          '<div class="modal-foot">' +
+            (key ? '<button type="button" class="btn btn-ghost" data-action="ai-key-clear">' + esc(t("ai_settings_clear")) + "</button>" : "") +
+            '<button type="button" class="btn btn-primary" data-action="ai-key-save">' + esc(t("ai_settings_save")) + "</button>" +
+          "</div>" +
+        "</div>" +
+      "</div>"
+    );
   }
 
   function renderEntitiesModal() {
@@ -569,6 +603,14 @@
     );
   }
 
+  function renderAiDraftRow() {
+    var hasKey = !!loadAiKey();
+    return '<div class="ai-draft-row">' +
+      '<button type="button" class="btn btn-ghost btn-sm" data-action="ai-draft">' + esc(t("ai_draft_btn")) + "</button>" +
+      '<span class="ai-draft-hint">' + esc(hasKey ? t("ai_draft_hint") : t("ai_draft_hint_no_key")) + "</span>" +
+    "</div>";
+  }
+
   function renderFormModal() {
     var editing = UI.modal.mode === "edit";
     var c = editing ? STATE.contracts.find(function (x) { return x.id === UI.modal.id; }) : (UI.modal.draft || {});
@@ -605,7 +647,9 @@
               fieldInput("paymentTerms", t("f_paymentTerms"), c.paymentTerms, "text", false, true) +
               fieldInput("governingLaw", t("f_governingLaw"), c.governingLaw, "text", false, true) +
             "</div>" +
-            '<div class="fieldset-title">' + esc(t("fs_notes")) + "</div>" +
+            '<div class="fieldset-title-row"><div class="fieldset-title">' + esc(t("fs_notes")) + "</div>" +
+              (!editing && UI.modal.extractedText ? renderAiDraftRow() : "") +
+            "</div>" +
             fieldTextarea("obligations", t("f_obligations"), c.obligations) +
             fieldTextarea("terminationClause", t("f_terminationClause"), c.terminationClause) +
             fieldTextarea("liabilityNotes", t("f_liabilityNotes"), c.liabilityNotes) +
@@ -648,6 +692,7 @@
       UI.modal.draft = result.guess;
       UI.modal.sourceFileName = file.name;
       UI.modal.fieldsFound = result.fieldsFound;
+      UI.modal.extractedText = text;
       render();
     }).catch(function (err) {
       UI.modal.reading = false;
@@ -655,6 +700,70 @@
       var msg = (err && err.message === "UNSUPPORTED_TYPE") ? t("upload_unsupported") : t("upload_failed_prefix") + (err && err.message ? err.message : String(err));
       showToast(msg);
     });
+  }
+
+  // ---------- optional AI drafting (Anthropic API, called directly from the browser) ----------
+  var CLAUDE_MODEL = "claude-haiku-4-5-20251001";
+  var CLAUDE_MAX_CHARS = 12000; // keeps the request small/cheap - these fields don't need the whole document
+
+  function callClaudeDraft(key, text) {
+    var trimmed = text.length > CLAUDE_MAX_CHARS ? text.slice(0, CLAUDE_MAX_CHARS) : text;
+    var prompt = "You are drafting internal contract-register notes from the contract text below. " +
+      "Return ONLY a JSON object (no markdown, no commentary) with these keys: " +
+      "obligations (1-3 sentence plain-English summary of each party's main obligations), " +
+      "terminationClause (1-2 sentence summary of how/when the contract can be terminated), " +
+      "liabilityNotes (1-2 sentence summary of liability caps, indemnities, or insurance requirements - empty string if none are stated), " +
+      "tags (a short comma-separated list of 3-6 lowercase keywords for this contract). " +
+      "If the text does not contain enough information for a field, use an empty string for that field.\n\nContract text:\n\n" + trimmed;
+
+    return fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 700,
+        messages: [{ role: "user", content: prompt }]
+      })
+    }).then(function (res) {
+      if (!res.ok) {
+        return res.json().catch(function () { return null; }).then(function (body) {
+          var msg = (body && body.error && body.error.message) || (res.status + " " + res.statusText);
+          throw new Error(msg);
+        });
+      }
+      return res.json();
+    }).then(function (data) {
+      var raw = (data.content && data.content[0] && data.content[0].text) || "";
+      var jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("Could not parse the AI response.");
+      var parsed = JSON.parse(jsonMatch[0]);
+      var out = {};
+      ["obligations", "terminationClause", "liabilityNotes", "tags"].forEach(function (k) {
+        if (typeof parsed[k] === "string" && parsed[k].trim()) out[k] = parsed[k].trim();
+      });
+      return out;
+    });
+  }
+
+  function applyAiDraftToForm(fields) {
+    var form = document.getElementById("contract-form");
+    if (!form) return;
+    Object.keys(fields).forEach(function (name) {
+      var el = form.querySelector('[name="' + name + '"]');
+      if (el) el.value = fields[name];
+    });
+  }
+
+  // Toggles the button in place rather than calling render(), so any manually
+  // typed field values elsewhere in the still-open form are never overwritten.
+  function setAiButtonBusy(busy) {
+    var btn = document.querySelector('[data-action="ai-draft"]');
+    if (btn) { btn.disabled = busy; btn.textContent = busy ? t("ai_drafting") : t("ai_draft_btn"); }
   }
 
   function bindEvents() {
@@ -699,7 +808,7 @@
     }
     var uploadReset = document.querySelector('[data-action="upload-reset"]');
     if (uploadReset) uploadReset.addEventListener("click", function () {
-      UI.modal.draft = null; UI.modal.sourceFileName = null; UI.modal.fieldsFound = 0;
+      UI.modal.draft = null; UI.modal.sourceFileName = null; UI.modal.fieldsFound = 0; UI.modal.extractedText = null;
       render();
     });
 
@@ -738,7 +847,7 @@
       el.addEventListener("click", function () { UI.modal = { mode: "delete", id: el.getAttribute("data-id") }; render(); });
     });
     function closeModal() {
-      UI.modal = (UI.modal && UI.modal.mode === "manage-entities" && UI.modal.returnTo) ? UI.modal.returnTo : null;
+      UI.modal = (UI.modal && UI.modal.returnTo) ? UI.modal.returnTo : null;
       render();
     }
     document.querySelectorAll('[data-action="close-modal"]').forEach(function (el) {
@@ -752,6 +861,55 @@
         var returnTo = (UI.modal && (UI.modal.mode === "add" || UI.modal.mode === "edit")) ? UI.modal : null;
         UI.modal = { mode: "manage-entities", returnTo: returnTo };
         render();
+      });
+    });
+
+    document.querySelectorAll('[data-action="ai-settings"]').forEach(function (el) {
+      el.addEventListener("click", function () {
+        var returnTo = (UI.modal && (UI.modal.mode === "add" || UI.modal.mode === "edit")) ? UI.modal : null;
+        UI.modal = { mode: "ai-settings", returnTo: returnTo };
+        render();
+      });
+    });
+    var aiKeySaveBtn = document.querySelector('[data-action="ai-key-save"]');
+    if (aiKeySaveBtn) aiKeySaveBtn.addEventListener("click", function () {
+      var input = document.getElementById("ai-key-input");
+      var key = input ? input.value.trim() : "";
+      if (!key) { showToast(t("ai_settings_empty")); return; }
+      saveAiKey(key);
+      var returnTo = UI.modal.returnTo || null;
+      UI.modal = returnTo;
+      render();
+      showToast(t("ai_settings_saved_toast"));
+    });
+    var aiKeyClearBtn = document.querySelector('[data-action="ai-key-clear"]');
+    if (aiKeyClearBtn) aiKeyClearBtn.addEventListener("click", function () {
+      saveAiKey("");
+      var returnTo = UI.modal.returnTo || null;
+      UI.modal = returnTo;
+      render();
+      showToast(t("ai_settings_cleared_toast"));
+    });
+
+    var aiDraftBtn = document.querySelector('[data-action="ai-draft"]');
+    if (aiDraftBtn) aiDraftBtn.addEventListener("click", function () {
+      var key = loadAiKey();
+      if (!key) {
+        UI.modal = { mode: "ai-settings", returnTo: UI.modal };
+        render();
+        return;
+      }
+      var text = UI.modal.extractedText;
+      if (!text) { showToast(t("ai_draft_no_text")); return; }
+      setAiButtonBusy(true);
+      callClaudeDraft(key, text).then(function (fields) {
+        UI.modal.draft = Object.assign({}, UI.modal.draft, fields);
+        applyAiDraftToForm(fields);
+        setAiButtonBusy(false);
+        showToast(t("ai_draft_success"));
+      }).catch(function (err) {
+        setAiButtonBusy(false);
+        showToast(t("ai_draft_failed_prefix") + (err && err.message ? err.message : String(err)));
       });
     });
 
@@ -853,7 +1011,7 @@
 
   document.addEventListener("keydown", function (e) {
     if (e.key !== "Escape" || !UI.modal) return;
-    UI.modal = (UI.modal.mode === "manage-entities" && UI.modal.returnTo) ? UI.modal.returnTo : null;
+    UI.modal = UI.modal.returnTo || null;
     render();
   });
 
