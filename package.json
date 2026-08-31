@@ -1,0 +1,9 @@
+{
+  "name": "docket-app",
+  "version": "1.0.0",
+  "private": true,
+  "description": "Docket - client-side contract & agreement register with a small serverless API for original-document storage.",
+  "dependencies": {
+    "@vercel/blob": "^2.8.0"
+  }
+}

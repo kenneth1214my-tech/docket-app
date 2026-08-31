@@ -452,6 +452,7 @@
               '<td><span class="pill alert-' + a.key + '">' + esc(a.label) + "</span></td>" +
               '<td class="num">' + fmtMoney(c.value, c.currency) + "</td>" +
               '<td><div class="row-actions">' +
+                (c.fileUrl ? '<a class="icon-btn" href="' + esc(c.fileUrl) + '" target="_blank" rel="noopener" title="' + esc(t("view_original_document")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 2.5h7l3 3v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-14a1 1 0 0 1 1-1z"/><path d="M12 2.5v3h3"/></svg></a>' : "") +
                 '<button class="icon-btn" data-action="edit" data-id="' + esc(c.id) + '" title="' + esc(t("action_edit")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13.5 3.5l3 3L6 17l-4 1 1-4z"/></svg></button>' +
                 '<button class="icon-btn" data-action="delete" data-id="' + esc(c.id) + '" title="' + esc(t("action_delete")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h12M8 6V4h4v2m-7 0 1 11h8l1-11"/></svg></button>' +
               "</div></td>" +
@@ -586,11 +587,16 @@
       var body = count > 0
         ? esc(t("upload_prefilled_prefix")) + ' <strong>' + esc(m.sourceFileName) + "</strong> " + esc(t("upload_prefilled_suffix"))
         : esc(t("upload_prefilled_none"));
+      var storageLine = "";
+      if (m.fileUploadStatus === "uploading") storageLine = '<div class="upload-storage-status">' + esc(t("upload_storing")) + "</div>";
+      else if (m.fileUploadStatus === "done") storageLine = '<div class="upload-storage-status ok">' + esc(t("upload_stored")) + "</div>";
+      else if (m.fileUploadStatus === "error") storageLine = '<div class="upload-storage-status err">' + esc(t("upload_store_failed_prefix")) + esc(m.fileUploadError || "") + "</div>";
       return '<div class="upload-summary' + (count > 0 ? "" : " none") + '">' +
         '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 2.5h7l3 3v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-14a1 1 0 0 1 1-1z"/><path d="M12 2.5v3h3"/></svg>' +
-        '<div class="upload-summary-text">' + body + "</div>" +
+        '<div class="upload-summary-text">' + body + storageLine + "</div>" +
         '<button type="button" class="link-btn" data-action="upload-reset">' + esc(t("upload_clear")) + "</button>" +
-      "</div>";
+      "</div>" +
+      renderAiDraftRow();
     }
     return (
       '<div class="upload-zone" id="upload-zone">' +
@@ -620,6 +626,7 @@
           '<div class="modal-head"><h2>' + (editing ? esc(t("modal_edit_title")) : esc(t("modal_new_title"))) + "</h2><button class=\"icon-btn\" data-action=\"close-modal\" aria-label=\"" + esc(t("cancel")) + "\"><svg viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><path d=\"M5 5l10 10M15 5L5 15\"/></svg></button></div>" +
           '<form id="contract-form">' +
           '<div class="modal-body">' +
+            (editing && c.fileUrl ? '<a class="view-original-link" href="' + esc(c.fileUrl) + '" target="_blank" rel="noopener"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 2.5h7l3 3v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-14a1 1 0 0 1 1-1z"/><path d="M12 2.5v3h3"/></svg>' + esc(t("view_original_document")) + (c.fileName ? " (" + esc(c.fileName) + ")" : "") + "</a>" : "") +
             (editing ? "" : renderUploadZone()) +
             '<div class="fieldset-title">' + esc(t("fs_basics")) + "</div>" +
             '<div class="field-grid">' +
@@ -647,16 +654,14 @@
               fieldInput("paymentTerms", t("f_paymentTerms"), c.paymentTerms, "text", false, true) +
               fieldInput("governingLaw", t("f_governingLaw"), c.governingLaw, "text", false, true) +
             "</div>" +
-            '<div class="fieldset-title-row"><div class="fieldset-title">' + esc(t("fs_notes")) + "</div>" +
-              (!editing && UI.modal.extractedText ? renderAiDraftRow() : "") +
-            "</div>" +
+            '<div class="fieldset-title">' + esc(t("fs_notes")) + "</div>" +
             fieldTextarea("obligations", t("f_obligations"), c.obligations) +
             fieldTextarea("terminationClause", t("f_terminationClause"), c.terminationClause) +
             fieldTextarea("liabilityNotes", t("f_liabilityNotes"), c.liabilityNotes) +
             fieldInput("tags", t("f_tags"), c.tags, "text", false, true) +
             fieldTextarea("notes", t("f_notes"), c.notes) +
           "</div>" +
-          '<div class="modal-foot"><button type="button" class="btn btn-ghost" data-action="close-modal">' + esc(t("cancel")) + '</button><button type="submit" class="btn btn-primary">' + (editing ? esc(t("save_changes")) : esc(t("add_contract_btn"))) + "</button></div>" +
+          '<div class="modal-foot"><button type="button" class="btn btn-ghost" data-action="close-modal">' + esc(t("cancel")) + '</button><button type="submit" class="btn btn-primary"' + (!editing && UI.modal.reading ? " disabled" : "") + '>' + (editing ? esc(t("save_changes")) : esc(t("add_contract_btn"))) + "</button></div>" +
           "</form>" +
         "</div>" +
       "</div>"
@@ -666,6 +671,28 @@
   // ---------- events ----------
   function openNewModal() { UI.modal = { mode: "add", draft: null, sourceFileName: null, reading: false, fieldsFound: 0 }; render(); }
 
+  // Bot/abuse deterrent for /api/upload, not a real secret - this app has no
+  // login, so the code is necessarily visible in the public client bundle.
+  // Real cost protection is the server-side size/type checks in api/upload.js.
+  var UPLOAD_ACCESS_CODE = "0Ipq64sUJZyluhCPqtrKwQj4";
+
+  function uploadFileToBackend(file) {
+    return fetch("/api/upload", {
+      method: "POST",
+      headers: {
+        "Content-Type": file.type || "application/octet-stream",
+        "x-file-name": encodeURIComponent(file.name),
+        "x-upload-code": UPLOAD_ACCESS_CODE
+      },
+      body: file
+    }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) {
+        if (!res.ok) throw new Error((data && data.error) || (res.status + " " + res.statusText));
+        return data;
+      });
+    });
+  }
+
   function handleUploadedFile(file) {
     if (!UI.modal || UI.modal.mode !== "add") return;
     var ext = file.name.split(".").pop().toLowerCase();
@@ -673,29 +700,49 @@
       showToast(t("upload_unsupported"));
       return;
     }
-    UI.modal.reading = true;
-    UI.modal.ocrLabel = null;
-    UI.modal.ocrPct = null;
+    var modalRef = UI.modal;
+    modalRef.reading = true;
+    modalRef.ocrLabel = null;
+    modalRef.ocrPct = null;
+    modalRef.fileUrl = null;
+    modalRef.fileUploadStatus = "uploading";
+    modalRef.fileUploadError = null;
     render();
+
+    // Runs alongside text extraction, not after it - storing the original
+    // document doesn't depend on what the pattern-matcher finds in it.
+    uploadFileToBackend(file).then(function (result) {
+      if (UI.modal !== modalRef) return; // user moved on (closed/cancelled) before this resolved
+      modalRef.fileUrl = result.url;
+      modalRef.fileUploadStatus = "done";
+      render();
+    }).catch(function (err) {
+      if (UI.modal !== modalRef) return;
+      modalRef.fileUploadStatus = "error";
+      modalRef.fileUploadError = err && err.message ? err.message : String(err);
+      render();
+    });
 
     var lastRenderAt = 0;
     function onProgress(label, fraction) {
-      UI.modal.ocrLabel = label;
-      UI.modal.ocrPct = Math.round((fraction || 0) * 100);
+      modalRef.ocrLabel = label;
+      modalRef.ocrPct = Math.round((fraction || 0) * 100);
       var now = Date.now();
       if (now - lastRenderAt > 200) { lastRenderAt = now; render(); } // throttle - OCR fires progress very frequently
     }
 
     window.DocketExtract.extractText(file, onProgress).then(function (text) {
       var result = window.DocketExtract.guessFields(text);
-      UI.modal.reading = false;
-      UI.modal.draft = result.guess;
-      UI.modal.sourceFileName = file.name;
-      UI.modal.fieldsFound = result.fieldsFound;
-      UI.modal.extractedText = text;
+      if (UI.modal !== modalRef) return;
+      modalRef.reading = false;
+      modalRef.draft = result.guess;
+      modalRef.sourceFileName = file.name;
+      modalRef.fieldsFound = result.fieldsFound;
+      modalRef.extractedText = text;
       render();
     }).catch(function (err) {
-      UI.modal.reading = false;
+      if (UI.modal !== modalRef) return;
+      modalRef.reading = false;
       render();
       var msg = (err && err.message === "UNSUPPORTED_TYPE") ? t("upload_unsupported") : t("upload_failed_prefix") + (err && err.message ? err.message : String(err));
       showToast(msg);
@@ -706,15 +753,37 @@
   var CLAUDE_MODEL = "claude-haiku-4-5-20251001";
   var CLAUDE_MAX_CHARS = 12000; // keeps the request small/cheap - these fields don't need the whole document
 
+  var AI_SELECT_FIELDS = {
+    contractType: TAXONOMY.contractTypes,
+    department: TAXONOMY.departments,
+    riskTier: TAXONOMY.riskTiers,
+    confidentiality: TAXONOMY.confidentiality,
+    counterpartyType: TAXONOMY.counterpartyTypes,
+    currency: TAXONOMY.currencies,
+    autoRenewal: ["Yes", "No"]
+  };
+  var AI_TEXT_FIELDS = ["title", "counterparty", "governingLaw", "paymentTerms", "obligations", "terminationClause", "liabilityNotes", "tags"];
+  var AI_DATE_FIELDS = ["startDate", "expiryDate"];
+  var AI_NUMBER_FIELDS = ["value", "noticeDays"];
+
   function callClaudeDraft(key, text) {
     var trimmed = text.length > CLAUDE_MAX_CHARS ? text.slice(0, CLAUDE_MAX_CHARS) : text;
-    var prompt = "You are drafting internal contract-register notes from the contract text below. " +
-      "Return ONLY a JSON object (no markdown, no commentary) with these keys: " +
+    var selectInstructions = Object.keys(AI_SELECT_FIELDS).map(function (k) {
+      return k + " (pick exactly one of: " + AI_SELECT_FIELDS[k].join(" | ") + " - empty string if you can't tell)";
+    }).join(", ");
+    var prompt = "You are filling in a contract-register form from the contract text below. " +
+      "Return ONLY a JSON object (no markdown, no commentary) with these keys:\n" +
+      "title (the contract's name/title), counterparty (the other party's full legal name, not our own entity), " +
+      "governingLaw (the jurisdiction whose laws govern the contract), paymentTerms (e.g. \"Net 30\"), " +
+      "startDate and expiryDate (ISO format YYYY-MM-DD, compute expiryDate from a stated term length plus startDate if no explicit expiry date is given), " +
+      "value (the main contract value as a plain number, no currency symbols or commas), " +
+      "noticeDays (the termination notice period in days, as a plain number), " +
+      selectInstructions + ", " +
       "obligations (1-3 sentence plain-English summary of each party's main obligations), " +
       "terminationClause (1-2 sentence summary of how/when the contract can be terminated), " +
-      "liabilityNotes (1-2 sentence summary of liability caps, indemnities, or insurance requirements - empty string if none are stated), " +
+      "liabilityNotes (1-2 sentence summary of liability caps, indemnities, or insurance requirements), " +
       "tags (a short comma-separated list of 3-6 lowercase keywords for this contract). " +
-      "If the text does not contain enough information for a field, use an empty string for that field.\n\nContract text:\n\n" + trimmed;
+      "If the text does not contain enough information for a field, use an empty string for that field. Never guess a select-type field value outside the exact list given.\n\nContract text:\n\n" + trimmed;
 
     return fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -726,7 +795,7 @@
       },
       body: JSON.stringify({
         model: CLAUDE_MODEL,
-        max_tokens: 700,
+        max_tokens: 1000,
         messages: [{ role: "user", content: prompt }]
       })
     }).then(function (res) {
@@ -743,8 +812,18 @@
       if (!jsonMatch) throw new Error("Could not parse the AI response.");
       var parsed = JSON.parse(jsonMatch[0]);
       var out = {};
-      ["obligations", "terminationClause", "liabilityNotes", "tags"].forEach(function (k) {
+      AI_TEXT_FIELDS.forEach(function (k) {
         if (typeof parsed[k] === "string" && parsed[k].trim()) out[k] = parsed[k].trim();
+      });
+      AI_DATE_FIELDS.forEach(function (k) {
+        if (typeof parsed[k] === "string" && /^\d{4}-\d{2}-\d{2}$/.test(parsed[k].trim())) out[k] = parsed[k].trim();
+      });
+      AI_NUMBER_FIELDS.forEach(function (k) {
+        var n = Number(parsed[k]);
+        if (parsed[k] !== "" && parsed[k] != null && !isNaN(n)) out[k] = n;
+      });
+      Object.keys(AI_SELECT_FIELDS).forEach(function (k) {
+        if (typeof parsed[k] === "string" && AI_SELECT_FIELDS[k].indexOf(parsed[k].trim()) !== -1) out[k] = parsed[k].trim();
       });
       return out;
     });
@@ -755,7 +834,12 @@
     if (!form) return;
     Object.keys(fields).forEach(function (name) {
       var el = form.querySelector('[name="' + name + '"]');
-      if (el) el.value = fields[name];
+      if (!el || el.value) return; // never clobber a value pattern-matching or the user already filled in
+      if (el.tagName === "SELECT") {
+        var matches = Array.prototype.some.call(el.options, function (o) { return o.value === String(fields[name]); });
+        if (!matches) return;
+      }
+      el.value = fields[name];
     });
   }
 
@@ -809,6 +893,7 @@
     var uploadReset = document.querySelector('[data-action="upload-reset"]');
     if (uploadReset) uploadReset.addEventListener("click", function () {
       UI.modal.draft = null; UI.modal.sourceFileName = null; UI.modal.fieldsFound = 0; UI.modal.extractedText = null;
+      UI.modal.fileUrl = null; UI.modal.fileUploadStatus = null; UI.modal.fileUploadError = null;
       render();
     });
 
@@ -1000,6 +1085,7 @@
             if (idx !== -1) next.contracts[idx] = Object.assign({}, next.contracts[idx], data);
           }, "toast_updated");
         } else {
+          if (UI.modal.fileUrl) { data.fileUrl = UI.modal.fileUrl; data.fileName = UI.modal.sourceFileName; }
           persist(function (next) {
             data.id = nextContractId(next.contracts);
             next.contracts.push(data);
