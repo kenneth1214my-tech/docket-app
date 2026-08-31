@@ -189,7 +189,8 @@ button { font-family: inherit; }
 .bar-fill.tone-primary { background: var(--primary); }
 .bar-columns { display: grid; grid-template-columns: 1fr 1fr; gap: 8px 28px; }
 @media (max-width: 760px) { .bar-columns { grid-template-columns: 1fr; } }
-.bar-columns .bar-col-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); font-weight: 700; padding: 14px 0 2px; }
+.bar-col-title { font-size: 11px; text-transform: uppercase; letter-spacing: 0.05em; color: var(--ink-faint); font-weight: 700; padding: 14px 0 2px; }
+.bar-type-list { border-top: 1px solid var(--border); margin-top: 2px; }
 
 .empty-illustration { width: 88px; height: 88px; margin: 0 auto 14px; color: var(--primary); opacity: 0.85; }
 

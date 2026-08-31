@@ -425,6 +425,13 @@
     cs.forEach(function (c) { if (riskCounts.hasOwnProperty(c.riskTier)) riskCounts[c.riskTier]++; });
     var maxRisk = Math.max.apply(null, TAXONOMY.riskTiers.map(function (r) { return riskCounts[r]; }).concat([1]));
 
+    var typeCounts = {};
+    TAXONOMY.contractTypes.forEach(function (ct) { typeCounts[ct] = 0; });
+    cs.forEach(function (c) { if (typeCounts.hasOwnProperty(c.contractType)) typeCounts[c.contractType]++; });
+    var typesUsed = TAXONOMY.contractTypes.filter(function (ct) { return typeCounts[ct] > 0; })
+      .sort(function (a, b) { return typeCounts[b] - typeCounts[a]; });
+    var maxType = Math.max.apply(null, typesUsed.map(function (ct) { return typeCounts[ct]; }).concat([1]));
+
     return (
       '<div class="panel">' +
         '<div class="panel-head"><h2>' + esc(t("portfolio_title")) + "</h2></div>" +
@@ -438,6 +445,10 @@
             TAXONOMY.riskTiers.map(function (r) { return barRow(tx(r), riskCounts[r], maxRisk, riskTone(r)); }).join("") +
           "</div>" +
         "</div>" +
+        (typesUsed.length ? '<div class="bar-list bar-type-list">' +
+          '<div class="bar-col-title">' + esc(t("col_contract_type")) + "</div>" +
+          typesUsed.map(function (ct) { return barRow(tx(ct), typeCounts[ct], maxType, "primary"); }).join("") +
+        "</div>" : "") +
       "</div>"
     );
   }
