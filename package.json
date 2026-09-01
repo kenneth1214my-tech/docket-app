@@ -4,6 +4,7 @@
   "private": true,
   "description": "Docket - client-side contract & agreement register with a small serverless API for original-document storage.",
   "dependencies": {
+    "@upstash/redis": "^1.38.3",
     "@vercel/blob": "^2.8.0"
   }
 }

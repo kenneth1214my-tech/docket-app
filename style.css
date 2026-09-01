@@ -86,6 +86,20 @@ body {
 }
 #app-root { min-height: 100%; display: flex; flex-direction: column; }
 
+.login-screen { flex: 1; display: flex; align-items: center; justify-content: center; padding: 24px; }
+.login-card {
+  width: 100%; max-width: 340px; background: var(--surface); border: 1px solid var(--border);
+  border-radius: 14px; box-shadow: var(--shadow); padding: 32px 28px; text-align: center;
+}
+.login-card .logo { width: 44px; height: 44px; margin-bottom: 14px; }
+.login-card h1 { font-size: 20px; margin-bottom: 6px; }
+.login-sub { font-size: 13px; color: var(--ink-muted); line-height: 1.5; margin-bottom: 22px; }
+.login-card form { display: flex; flex-direction: column; gap: 12px; }
+.login-card input { width: 100%; text-align: center; }
+.login-card .btn { width: 100%; justify-content: center; }
+.login-error { font-size: 12.5px; color: var(--danger); background: var(--danger-bg); border-radius: 7px; padding: 8px 10px; }
+.login-loading { font-size: 13px; color: var(--ink-muted); }
+
 .top-strip {
   flex: 0 0 auto; display: flex; align-items: center; justify-content: flex-end; gap: 8px;
   padding: 9px 20px; border-bottom: 1px solid var(--border); background: var(--surface);

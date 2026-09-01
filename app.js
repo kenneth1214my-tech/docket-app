@@ -38,33 +38,57 @@
     return changed;
   }
 
-  function loadState() {
+  // Reads whatever this browser had saved before the shared-login backend
+  // existed. Used exactly once, as a migration source on a team's very
+  // first login when the server has no data yet - not part of normal
+  // load/save any more.
+  function loadStateLocal() {
     try {
       var raw = window.localStorage.getItem(STORAGE_KEY);
-      if (!raw) return JSON.parse(JSON.stringify(EMPTY_STATE));
+      if (!raw) return null;
       var parsed = JSON.parse(raw);
-      if (!parsed || !Array.isArray(parsed.contracts)) return JSON.parse(JSON.stringify(EMPTY_STATE));
+      if (!parsed || !Array.isArray(parsed.contracts)) return null;
       if (!Array.isArray(parsed.entities) || !parsed.entities.length) parsed.entities = DEFAULT_ENTITIES.slice();
-      var anyChanged = false;
-      parsed.contracts.forEach(function (c) { if (normalizeContractCase(c)) anyChanged = true; });
-      if (anyChanged) {
-        try { window.localStorage.setItem(STORAGE_KEY, JSON.stringify(parsed)); } catch (e) { /* ignore - still usable in memory */ }
-      }
       return parsed;
     } catch (e) {
-      console.warn("Docket: could not read saved data, starting fresh.", e);
-      return JSON.parse(JSON.stringify(EMPTY_STATE));
+      return null;
     }
   }
 
+  // The whole team's data now lives server-side (one shared login), not in
+  // this browser's localStorage - see api/state.js. saveState() keeps its
+  // old synchronous-looking call signature (every existing call site just
+  // does `STATE = next; saveState(STATE); render();`) but the actual write
+  // is an async PUT in the background; a failure surfaces as a toast rather
+  // than silently pretending the save happened.
   function saveState(state) {
-    try {
-      window.localStorage.setItem(STORAGE_KEY, JSON.stringify(state));
-      return true;
-    } catch (e) {
-      console.error("Docket: could not save data.", e);
-      return false;
-    }
+    fetch("/api/state", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(state)
+    }).then(function (res) {
+      if (res.status === 401) { renderLogin(t("login_expired")); return; }
+      if (!res.ok) {
+        return res.json().catch(function () { return {}; }).then(function (data) {
+          throw new Error((data && data.error) || (res.status + " " + res.statusText));
+        });
+      }
+    }).catch(function (err) {
+      showToast(t("toast_sync_failed_prefix") + (err && err.message ? err.message : String(err)));
+    });
+    return true;
+  }
+
+  function fetchStateFromServer() {
+    return fetch("/api/state", { method: "GET" }).then(function (res) {
+      if (res.status === 401) return { unauthenticated: true };
+      if (!res.ok) {
+        return res.json().catch(function () { return {}; }).then(function (data) {
+          throw new Error((data && data.error) || (res.status + " " + res.statusText));
+        });
+      }
+      return res.json().then(function (data) { return { data: data }; });
+    });
   }
 
   function loadLang() {
@@ -92,7 +116,7 @@
     } catch (e) { /* ignore */ }
   }
 
-  var STATE = loadState();
+  var STATE = JSON.parse(JSON.stringify(EMPTY_STATE)); // placeholder until boot() resolves the real, server-backed state
   var UI = {
     view: sessionStorage.getItem("docket_ui_view") || "dashboard",
     lang: loadLang(),
@@ -361,6 +385,7 @@
             '<button class="link-btn" data-action="export-excel">' + esc(t("export_excel")) + "</button>" +
             '<button class="link-btn" data-action="import">' + esc(t("import_data")) + "</button>" +
             (STATE.contracts.length === 0 ? '<button class="link-btn" data-action="load-sample">' + esc(t("load_sample")) + "</button>" : '<button class="link-btn" data-action="clear-all">' + esc(t("clear_all")) + "</button>") +
+            '<button class="link-btn" data-action="logout">' + esc(t("logout_btn")) + "</button>" +
           "</div>" +
         "</div>" +
       "</div>"
@@ -1204,6 +1229,10 @@
       });
     }
 
+    var logoutBtn = document.querySelector('[data-action="logout"]');
+    if (logoutBtn) logoutBtn.addEventListener("click", function () {
+      fetch("/api/logout", { method: "POST" }).catch(function () { /* ignore - clearing the cookie is best-effort */ }).then(function () { renderLogin(); });
+    });
     var clearAllBtn = document.querySelector('[data-action="clear-all"]');
     if (clearAllBtn) clearAllBtn.addEventListener("click", function () { UI.modal = { mode: "clear-all" }; render(); });
     var confirmClearAll = document.querySelector('[data-action="confirm-clear-all"]');
@@ -1488,5 +1517,74 @@
     render();
   });
 
-  render();
+  // ---------- boot / shared team login ----------
+  function renderLoginScreen(errorMsg) {
+    return (
+      '<div class="login-screen"><div class="login-card">' +
+        logoMark() +
+        "<h1>" + esc(t("login_title")) + "</h1>" +
+        '<p class="login-sub">' + esc(t("login_subtitle")) + "</p>" +
+        '<form id="login-form">' +
+          '<input type="password" id="login-password-input" placeholder="' + esc(t("login_password_placeholder")) + '" autocomplete="current-password" autofocus required>' +
+          (errorMsg ? '<div class="login-error">' + esc(errorMsg) + "</div>" : "") +
+          '<button type="submit" class="btn btn-primary">' + esc(t("login_submit")) + "</button>" +
+        "</form>" +
+      "</div></div>"
+    );
+  }
+
+  function renderLogin(errorMsg) {
+    document.documentElement.lang = UI.lang;
+    var root = document.getElementById("app-root");
+    root.innerHTML = renderLoginScreen(errorMsg);
+    var form = document.getElementById("login-form");
+    form.addEventListener("submit", function (e) {
+      e.preventDefault();
+      var password = document.getElementById("login-password-input").value;
+      var submitBtn = form.querySelector('button[type="submit"]');
+      submitBtn.disabled = true;
+      fetch("/api/login", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ password: password })
+      }).then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; });
+      }).then(function (result) {
+        if (!result.ok) { renderLogin((result.data && result.data.error) || t("login_incorrect")); return; }
+        boot();
+      }).catch(function (err) {
+        renderLogin(t("login_generic_error_prefix") + (err && err.message ? err.message : String(err)));
+      });
+    });
+  }
+
+  function finishBoot(serverData) {
+    var migrating = false;
+    if (serverData && Array.isArray(serverData.contracts)) {
+      STATE = serverData;
+    } else {
+      // Server has nothing yet - this team's very first login. Bring over
+      // whatever this specific browser already had, so nothing already
+      // entered is lost; otherwise start genuinely blank.
+      STATE = loadStateLocal() || JSON.parse(JSON.stringify(EMPTY_STATE));
+      migrating = true;
+    }
+    if (!Array.isArray(STATE.entities) || !STATE.entities.length) STATE.entities = DEFAULT_ENTITIES.slice();
+    var anyChanged = false;
+    STATE.contracts.forEach(function (c) { if (normalizeContractCase(c)) anyChanged = true; });
+    if (migrating || anyChanged) saveState(STATE);
+    render();
+  }
+
+  function boot() {
+    document.getElementById("app-root").innerHTML = '<div class="login-screen"><div class="login-card"><div class="login-loading">' + esc(t("loading")) + "</div></div></div>";
+    fetchStateFromServer().then(function (result) {
+      if (result.unauthenticated) { renderLogin(); return; }
+      finishBoot(result.data);
+    }).catch(function (err) {
+      renderLogin(t("login_generic_error_prefix") + (err && err.message ? err.message : String(err)));
+    });
+  }
+
+  boot();
 })();
