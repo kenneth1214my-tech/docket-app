@@ -1455,7 +1455,7 @@
       "Academic": "教务部", "Student Services": "学生事务部", "Human Resources": "人力资源部", "IT": "信息技术部", "Procurement": "采购部",
       "Public": "公开", "Internal": "内部", "Confidential": "保密", "Highly Confidential / Restricted": "高度保密/限制级",
       "Vendor / Supplier": "供应商", "Customer": "客户", "Employee": "员工", "Agent / Distributor": "代理/经销商",
-      "Landlord": "房东/出租方", "Government / Regulator": "政府/监管机构", "Financial Institution": "金融机构",
+      "Landlord": "房东/出租方", "Tenant": "租客/承租方", "Government / Regulator": "政府/监管机构", "Financial Institution": "金融机构",
       "Joint Venture Partner": "合资伙伴", "Yes": "是", "No": "否", "Months": "个月", "Years": "年"
     },
     ms: {
@@ -1478,7 +1478,7 @@
       "Academic": "Akademik", "Student Services": "Perkhidmatan Pelajar", "Human Resources": "Sumber Manusia", "IT": "Teknologi Maklumat", "Procurement": "Perolehan",
       "Public": "Awam", "Internal": "Dalaman", "Confidential": "Sulit", "Highly Confidential / Restricted": "Sangat Sulit/Terhad",
       "Vendor / Supplier": "Pembekal", "Customer": "Pelanggan", "Employee": "Pekerja", "Agent / Distributor": "Ejen/Pengedar",
-      "Landlord": "Tuan Tanah", "Government / Regulator": "Kerajaan/Pengawal Selia", "Financial Institution": "Institusi Kewangan",
+      "Landlord": "Tuan Tanah", "Tenant": "Penyewa", "Government / Regulator": "Kerajaan/Pengawal Selia", "Financial Institution": "Institusi Kewangan",
       "Joint Venture Partner": "Rakan Usaha Sama", "Yes": "Ya", "No": "Tidak", "Months": "Bulan", "Years": "Tahun"
     },
     ko: {
@@ -1501,7 +1501,7 @@
       "Academic": "학사팀", "Student Services": "학생지원팀", "Human Resources": "인사팀", "IT": "IT팀", "Procurement": "구매팀",
       "Public": "공개", "Internal": "내부", "Confidential": "기밀", "Highly Confidential / Restricted": "특급기밀/제한",
       "Vendor / Supplier": "공급업체", "Customer": "고객", "Employee": "직원", "Agent / Distributor": "대리점/유통업체",
-      "Landlord": "임대인", "Government / Regulator": "정부/규제기관", "Financial Institution": "금융기관",
+      "Landlord": "임대인", "Tenant": "임차인", "Government / Regulator": "정부/규제기관", "Financial Institution": "금융기관",
       "Joint Venture Partner": "합작투자 파트너", "Yes": "예", "No": "아니오", "Months": "개월", "Years": "년"
     },
     ja: {
@@ -1524,7 +1524,7 @@
       "Academic": "教務部", "Student Services": "学生支援部", "Human Resources": "人事部", "IT": "情報システム部", "Procurement": "調達部",
       "Public": "公開", "Internal": "社内限定", "Confidential": "機密", "Highly Confidential / Restricted": "極秘/制限付き",
       "Vendor / Supplier": "取引先", "Customer": "顧客", "Employee": "従業員", "Agent / Distributor": "代理店/販売店",
-      "Landlord": "貸主", "Government / Regulator": "政府/規制当局", "Financial Institution": "金融機関",
+      "Landlord": "貸主", "Tenant": "借主", "Government / Regulator": "政府/規制当局", "Financial Institution": "金融機関",
       "Joint Venture Partner": "合弁パートナー", "Yes": "はい", "No": "いいえ", "Months": "ヶ月", "Years": "年"
     },
     id: {
@@ -1547,7 +1547,7 @@
       "Academic": "Akademik", "Student Services": "Layanan Mahasiswa", "Human Resources": "Sumber Daya Manusia", "IT": "Teknologi Informasi", "Procurement": "Pengadaan",
       "Public": "Publik", "Internal": "Internal", "Confidential": "Rahasia", "Highly Confidential / Restricted": "Sangat Rahasia/Terbatas",
       "Vendor / Supplier": "Pemasok", "Customer": "Pelanggan", "Employee": "Karyawan", "Agent / Distributor": "Agen/Distributor",
-      "Landlord": "Pemilik Properti", "Government / Regulator": "Pemerintah/Regulator", "Financial Institution": "Lembaga Keuangan",
+      "Landlord": "Pemilik Properti", "Tenant": "Penyewa", "Government / Regulator": "Pemerintah/Regulator", "Financial Institution": "Lembaga Keuangan",
       "Joint Venture Partner": "Mitra Usaha Patungan", "Yes": "Ya", "No": "Tidak", "Months": "Bulan", "Years": "Tahun"
     },
     tl: {
@@ -1570,7 +1570,7 @@
       "Academic": "Akademiko", "Student Services": "Serbisyo sa Mag-aaral", "Human Resources": "Human Resources", "IT": "IT", "Procurement": "Procurement",
       "Public": "Pampubliko", "Internal": "Panloob", "Confidential": "Kumpidensyal", "Highly Confidential / Restricted": "Lubos na Kumpidensyal/Restricted",
       "Vendor / Supplier": "Supplier", "Customer": "Customer", "Employee": "Empleyado", "Agent / Distributor": "Ahente/Distributor",
-      "Landlord": "May-ari ng Paupahan", "Government / Regulator": "Pamahalaan/Regulator", "Financial Institution": "Institusyong Pinansyal",
+      "Landlord": "May-ari ng Paupahan", "Tenant": "Umuupa", "Government / Regulator": "Pamahalaan/Regulator", "Financial Institution": "Institusyong Pinansyal",
       "Joint Venture Partner": "Kasosyo sa Joint Venture", "Yes": "Oo", "No": "Hindi", "Months": "Buwan", "Years": "Taon"
     }
   };

@@ -16,7 +16,7 @@
     riskTiers: ["Critical", "High", "Medium", "Low"],
     departments: ["Executive / Management", "Academic", "Student Services", "Finance", "Legal / Compliance", "Operations / Logistics", "Sales & Business Development", "Human Resources", "IT", "Procurement"],
     confidentiality: ["Public", "Internal", "Confidential", "Highly Confidential / Restricted"],
-    counterpartyTypes: ["Vendor / Supplier", "Customer", "Employee", "Agent / Distributor", "Landlord", "Government / Regulator", "Financial Institution", "Joint Venture Partner", "Other"],
+    counterpartyTypes: ["Vendor / Supplier", "Customer", "Employee", "Agent / Distributor", "Landlord", "Tenant", "Government / Regulator", "Financial Institution", "Joint Venture Partner", "Other"],
     currencies: ["SGD", "USD", "MYR", "CNY", "EUR", "HKD", "GBP", "IDR", "THB", "VND"]
   };
 
