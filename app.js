@@ -14,7 +14,7 @@
     contractTypes: ["NDA / Confidentiality Agreement", "Master Service Agreement (MSA)", "Statement of Work (SOW)", "Vendor / Supplier Agreement", "Customer / Sales Agreement", "Freight Forwarding Agreement", "Customs Brokerage Agreement", "Warehouse / 3PL Agreement", "Distribution / Agency Agreement", "Lease Agreement (Property/Equipment)", "Employment Contract", "Consulting / Independent Contractor", "Insurance Policy", "Loan / Financing Agreement", "Joint Venture Agreement", "Licensing Agreement", "Franchise Agreement", "Government Permit / Regulatory Licence", "Non-Compete / Non-Solicit", "IT / SaaS Subscription Agreement", "Other"],
     statuses: ["Draft", "Under Negotiation", "Pending Signature", "Active", "Expiring Soon", "Expired", "Terminated", "Renewed", "Archived"],
     riskTiers: ["Critical", "High", "Medium", "Low"],
-    departments: ["Executive / Management", "Finance", "Legal / Compliance", "Operations / Logistics", "Sales & Business Development", "Human Resources", "IT", "Procurement"],
+    departments: ["Executive / Management", "Academic", "Student Services", "Finance", "Legal / Compliance", "Operations / Logistics", "Sales & Business Development", "Human Resources", "IT", "Procurement"],
     confidentiality: ["Public", "Internal", "Confidential", "Highly Confidential / Restricted"],
     counterpartyTypes: ["Vendor / Supplier", "Customer", "Employee", "Agent / Distributor", "Landlord", "Government / Regulator", "Financial Institution", "Joint Venture Partner", "Other"],
     currencies: ["SGD", "USD", "MYR", "CNY", "EUR", "HKD", "GBP", "IDR", "THB", "VND"]
