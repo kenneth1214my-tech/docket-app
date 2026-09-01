@@ -74,4 +74,20 @@ async function readJsonBody(req) {
   return JSON.parse(Buffer.concat(chunks).toString("utf8"));
 }
 
-module.exports = { issueCookie, clearCookie, requireSession, readJsonBody };
+// Password hashing (scrypt, built into Node - no extra dependency). Used
+// once someone changes the shared password away from the TEAM_LOGIN_PASSWORD
+// env-var default; see login.js for how the two combine.
+function hashPassword(password) {
+  var salt = crypto.randomBytes(16).toString("hex");
+  var hash = crypto.scryptSync(password, salt, 64).toString("hex");
+  return { salt: salt, hash: hash };
+}
+
+function verifyPassword(password, stored) {
+  if (!stored || !stored.salt || !stored.hash || typeof password !== "string") return false;
+  var check = crypto.scryptSync(password, stored.salt, 64).toString("hex");
+  var a = Buffer.from(check, "hex"), b = Buffer.from(stored.hash, "hex");
+  return a.length === b.length && crypto.timingSafeEqual(a, b);
+}
+
+module.exports = { issueCookie, clearCookie, requireSession, readJsonBody, hashPassword, verifyPassword };

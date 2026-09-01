@@ -385,6 +385,7 @@
             '<button class="link-btn" data-action="export-excel">' + esc(t("export_excel")) + "</button>" +
             '<button class="link-btn" data-action="import">' + esc(t("import_data")) + "</button>" +
             (STATE.contracts.length === 0 ? '<button class="link-btn" data-action="load-sample">' + esc(t("load_sample")) + "</button>" : '<button class="link-btn" data-action="clear-all">' + esc(t("clear_all")) + "</button>") +
+            '<button class="link-btn" data-action="change-password">' + esc(t("change_password_link")) + "</button>" +
             '<button class="link-btn" data-action="logout">' + esc(t("logout_btn")) + "</button>" +
           "</div>" +
         "</div>" +
@@ -684,7 +685,24 @@
     if (UI.modal.mode === "manage-entities") return renderEntitiesModal();
     if (UI.modal.mode === "ai-settings") return renderAiSettingsModal();
     if (UI.modal.mode === "add-addendum") return renderAddAddendumModal();
+    if (UI.modal.mode === "change-password") return renderChangePasswordModal();
     return renderFormModal();
+  }
+
+  function renderChangePasswordModal() {
+    return (
+      '<div class="modal-overlay" data-overlay>' +
+        '<div class="modal">' +
+          '<div class="modal-head"><h2>' + esc(t("change_password_title")) + "</h2><button class=\"icon-btn\" data-action=\"close-modal\" aria-label=\"" + esc(t("cancel")) + "\"><svg viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><path d=\"M5 5l10 10M15 5L5 15\"/></svg></button></div>" +
+          '<div class="modal-body">' +
+            '<div class="field full"><label>' + esc(t("current_password_label")) + '</label><input type="password" id="change-pw-current" autocomplete="current-password"></div>' +
+            '<div class="field full"><label>' + esc(t("new_password_label")) + '</label><input type="password" id="change-pw-new" autocomplete="new-password" minlength="6"></div>' +
+            '<div class="field full"><label>' + esc(t("confirm_password_label")) + '</label><input type="password" id="change-pw-confirm" autocomplete="new-password" minlength="6"></div>' +
+          "</div>" +
+          '<div class="modal-foot"><button type="button" class="btn btn-ghost" data-action="close-modal">' + esc(t("cancel")) + '</button><button type="button" class="btn btn-primary" data-action="submit-change-password">' + esc(t("change_password_submit")) + "</button></div>" +
+        "</div>" +
+      "</div>"
+    );
   }
 
   function renderAiSettingsModal() {
@@ -1229,6 +1247,34 @@
       });
     }
 
+    var changePasswordBtn = document.querySelector('[data-action="change-password"]');
+    if (changePasswordBtn) changePasswordBtn.addEventListener("click", function () {
+      UI.modal = { mode: "change-password" };
+      render();
+    });
+    var submitChangePasswordBtn = document.querySelector('[data-action="submit-change-password"]');
+    if (submitChangePasswordBtn) submitChangePasswordBtn.addEventListener("click", function () {
+      var current = document.getElementById("change-pw-current").value;
+      var next = document.getElementById("change-pw-new").value;
+      var confirmVal = document.getElementById("change-pw-confirm").value;
+      if (!current || !next) { showToast(t("toast_change_password_required")); return; }
+      if (next !== confirmVal) { showToast(t("passwords_dont_match")); return; }
+      if (next.length < 6) { showToast(t("password_too_short")); return; }
+      fetch("/api/change-password", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ currentPassword: current, newPassword: next })
+      }).then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; });
+      }).then(function (result) {
+        if (!result.ok) { showToast((result.data && result.data.error) || t("login_generic_error_prefix")); return; }
+        UI.modal = null;
+        render();
+        showToast(t("toast_password_changed"));
+      }).catch(function (err) {
+        showToast(t("toast_sync_failed_prefix") + (err && err.message ? err.message : String(err)));
+      });
+    });
     var logoutBtn = document.querySelector('[data-action="logout"]');
     if (logoutBtn) logoutBtn.addEventListener("click", function () {
       fetch("/api/logout", { method: "POST" }).catch(function () { /* ignore - clearing the cookie is best-effort */ }).then(function () { renderLogin(); });
@@ -1518,7 +1564,24 @@
   });
 
   // ---------- boot / shared team login ----------
-  function renderLoginScreen(errorMsg) {
+  function renderLoginScreen(mode, errorMsg) {
+    if (mode === "reset") {
+      return (
+        '<div class="login-screen"><div class="login-card">' +
+          logoMark() +
+          "<h1>" + esc(t("reset_password_title")) + "</h1>" +
+          '<p class="login-sub">' + esc(t("reset_password_subtitle")) + "</p>" +
+          '<form id="reset-password-form">' +
+            '<input type="text" id="reset-recovery-input" placeholder="' + esc(t("recovery_code_placeholder")) + '" autocomplete="off" autofocus required>' +
+            '<input type="password" id="reset-new-password-input" placeholder="' + esc(t("new_password_placeholder")) + '" autocomplete="new-password" required minlength="6">' +
+            '<input type="password" id="reset-confirm-password-input" placeholder="' + esc(t("confirm_password_placeholder")) + '" autocomplete="new-password" required minlength="6">' +
+            (errorMsg ? '<div class="login-error">' + esc(errorMsg) + "</div>" : "") +
+            '<button type="submit" class="btn btn-primary">' + esc(t("reset_password_submit")) + "</button>" +
+          "</form>" +
+          '<button type="button" class="link-btn login-back-link" data-action="login-back">' + esc(t("back_to_login")) + "</button>" +
+        "</div></div>"
+      );
+    }
     return (
       '<div class="login-screen"><div class="login-card">' +
         logoMark() +
@@ -1529,14 +1592,47 @@
           (errorMsg ? '<div class="login-error">' + esc(errorMsg) + "</div>" : "") +
           '<button type="submit" class="btn btn-primary">' + esc(t("login_submit")) + "</button>" +
         "</form>" +
+        '<button type="button" class="link-btn login-forgot-link" data-action="login-forgot">' + esc(t("forgot_password_link")) + "</button>" +
       "</div></div>"
     );
   }
 
-  function renderLogin(errorMsg) {
+  function renderLogin(errorMsg, mode) {
+    mode = mode || "login";
     document.documentElement.lang = UI.lang;
     var root = document.getElementById("app-root");
-    root.innerHTML = renderLoginScreen(errorMsg);
+    root.innerHTML = renderLoginScreen(mode, errorMsg);
+
+    if (mode === "reset") {
+      var backBtn = document.querySelector('[data-action="login-back"]');
+      if (backBtn) backBtn.addEventListener("click", function () { renderLogin(); });
+      var resetForm = document.getElementById("reset-password-form");
+      resetForm.addEventListener("submit", function (e) {
+        e.preventDefault();
+        var recoveryCode = document.getElementById("reset-recovery-input").value;
+        var newPassword = document.getElementById("reset-new-password-input").value;
+        var confirmPassword = document.getElementById("reset-confirm-password-input").value;
+        if (newPassword !== confirmPassword) { renderLogin(t("passwords_dont_match"), "reset"); return; }
+        if (newPassword.length < 6) { renderLogin(t("password_too_short"), "reset"); return; }
+        fetch("/api/reset-password", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ recoveryCode: recoveryCode, newPassword: newPassword })
+        }).then(function (res) {
+          return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; });
+        }).then(function (result) {
+          if (!result.ok) { renderLogin((result.data && result.data.error) || t("login_generic_error_prefix"), "reset"); return; }
+          boot();
+        }).catch(function (err) {
+          renderLogin(t("login_generic_error_prefix") + (err && err.message ? err.message : String(err)), "reset");
+        });
+      });
+      return;
+    }
+
+    var forgotBtn = document.querySelector('[data-action="login-forgot"]');
+    if (forgotBtn) forgotBtn.addEventListener("click", function () { renderLogin(null, "reset"); });
+
     var form = document.getElementById("login-form");
     form.addEventListener("submit", function (e) {
       e.preventDefault();
