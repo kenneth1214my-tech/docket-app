@@ -502,12 +502,155 @@
     }).catch(function () { return null; });
   }
 
-  // Renewals try to clone the original's real .docx first (same layout,
-  // only the core dates/value swapped); everything else - fresh contracts,
-  // or a renewal whose original was a PDF/scan/unreachable file - falls
-  // back to the generated template. The DRAFT banner only appears in the
-  // generated template: a cloned original is left exactly as it was, so
-  // nothing is injected into a real signed-document layout.
+  // PDF equivalent of buildRenewalDocxFromOriginal - but PDFs have no
+  // reflowable text to edit in place, only glyphs at fixed coordinates. This
+  // only works on a text-layer (born-digital) PDF, never a scan/photo (no
+  // text layer to search at all), and it's a visual PATCH, not a true edit:
+  // paint a white box over the old value's exact position (from pdf.js's
+  // getTextContent transforms) and draw the new value on top in a standard
+  // font. Font, weight, and style of the surrounding text are NOT matched -
+  // that information isn't reliably recoverable client-side - so the patched
+  // value can look visually distinct from the rest of the page.
+  function buildRenewalPdfFromOriginal(orig, c) {
+    var name = orig.fileName || orig.fileUrl || "";
+    if (!orig.fileUrl || !/\.pdf($|[?#])/i.test(name) || !window.PDFLib || !window.pdfjsLib || !window.DocketExtract) return Promise.resolve(null);
+    var origBytes;
+    return fetch(orig.fileUrl).then(function (res) {
+      if (!res.ok) throw new Error("fetch failed");
+      return res.arrayBuffer();
+    }).then(function (buf) {
+      origBytes = buf;
+      return window.pdfjsLib.getDocument({ data: buf.slice(0) }).promise;
+    }).then(function (pdf) {
+      return pdf.getPage(1);
+    }).then(function (page) {
+      if (page.rotate) return null; // rotated pages - position math isn't reliable, skip rather than risk a garbled patch
+      return page.getTextContent().then(function (content) {
+        var items = content.items;
+        // Same joined-text view extract.js's regexes expect, but tracking each
+        // item's [start, end) range in that string so a match's character
+        // index can be mapped back to the on-page item(s) that produced it.
+        var joined = "", ranges = [];
+        items.forEach(function (it) {
+          var start = joined.length;
+          joined += it.str;
+          ranges.push({ start: start, end: joined.length, item: it });
+          joined += " ";
+        });
+
+        var dates = window.DocketExtract.findAllDates(joined);
+        var oldStartMatch = orig.startDate ? dates.find(function (d) { return d.iso === orig.startDate; }) : null;
+        var oldExpiryMatch = orig.expiryDate ? dates.find(function (d) { return d.iso === orig.expiryDate; }) : null;
+        if (oldExpiryMatch && oldStartMatch && oldExpiryMatch.index === oldStartMatch.index) oldExpiryMatch = null;
+        var money = window.DocketExtract.findMoney(joined);
+        var oldValueIndex = (money && orig.value != null && Math.abs(money.value - Number(orig.value)) < 1) ? joined.indexOf(money.raw) : -1;
+
+        if (!oldStartMatch && !oldExpiryMatch) return null; // can't confidently update the dates - don't ship stale ones
+
+        // A pdf.js text item is one content-stream text-showing operation,
+        // which can be a whole sentence (one drawText/Tj call), not one word -
+        // two different matches (e.g. start date and expiry date) can both
+        // fall inside the SAME item. So position within an item proportionally
+        // by character offset (assuming a roughly even per-character width)
+        // rather than ever using the item's full box for a partial match -
+        // otherwise two matches sharing an item would produce the same box
+        // and draw on top of each other.
+        function subBoxForItem(range, matchStart, matchEnd) {
+          var it = range.item;
+          var localStart = Math.max(0, matchStart - range.start);
+          var localEnd = Math.min(it.str.length, matchEnd - range.start);
+          if (localEnd <= localStart) return null;
+          var charW = it.str.length ? it.width / it.str.length : 0;
+          return {
+            x: it.transform[4] + localStart * charW,
+            y: it.transform[5],
+            width: (localEnd - localStart) * charW,
+            height: it.height || Math.abs(it.transform[3]) || 10,
+            fontSize: Math.abs(it.transform[3]) || 11,
+            charW: charW,
+            precedingChars: localStart
+          };
+        }
+        function bboxForRange(index, length) {
+          var end = index + length;
+          var boxes = [];
+          ranges.forEach(function (r) {
+            if (r.start < end && r.end > index) {
+              var box = subBoxForItem(r, index, end);
+              if (box) boxes.push(box);
+            }
+          });
+          if (!boxes.length) return null;
+          var minX = Math.min.apply(null, boxes.map(function (b) { return b.x; }));
+          var maxX = Math.max.apply(null, boxes.map(function (b) { return b.x + b.width; }));
+          var minY = Math.min.apply(null, boxes.map(function (b) { return b.y; }));
+          var maxY = Math.max.apply(null, boxes.map(function (b) { return b.y + b.height; }));
+          var maxFont = Math.max.apply(null, boxes.map(function (b) { return b.fontSize; }));
+          var maxCharW = Math.max.apply(null, boxes.map(function (b) { return b.charW; }));
+          // How far into its item the match starts - the average-char-width
+          // estimate's error grows roughly with this distance (a proportional
+          // font's real widths vary more over a longer run of preceding text),
+          // so the safety margin below scales with it instead of being fixed.
+          var maxPreceding = Math.max.apply(null, boxes.map(function (b) { return b.precedingChars; }));
+          return { x: minX, y: minY, width: maxX - minX, height: maxY - minY, fontSize: maxFont || 11, charW: maxCharW, precedingChars: maxPreceding };
+        }
+
+        var patches = [];
+        function addPatch(match, newText) {
+          if (!match || !newText) return;
+          var box = bboxForRange(match.index, match.raw.length);
+          if (box) patches.push({ box: box, text: newText });
+        }
+        addPatch(oldStartMatch, c.startDate && fmtDateLong(c.startDate));
+        addPatch(oldExpiryMatch, c.expiryDate && fmtDateLong(c.expiryDate));
+        if (oldValueIndex !== -1 && c.value != null) {
+          var box = bboxForRange(oldValueIndex, money.raw.length);
+          if (box) patches.push({ box: box, text: (c.currency || orig.currency || "") + " " + Number(c.value).toLocaleString("en-SG") });
+        }
+        if (!patches.length) return null;
+
+        return window.PDFLib.PDFDocument.load(origBytes).then(function (pdfDoc) {
+          return pdfDoc.embedFont(window.PDFLib.StandardFonts.Helvetica).then(function (font) {
+            var pdfPage = pdfDoc.getPage(0);
+            // The per-character width used to locate a match inside a
+            // multi-word text item is an AVERAGE, not the font's real (non-
+            // monospace) per-glyph metrics, so the estimated left edge tends
+            // to drift off the true one, more so the further into the item
+            // the match starts. Scale the left margin with both the item's
+            // own character width and how much text precedes the match,
+            // instead of a fixed pad, so it keeps covering that drift rather
+            // than leaving a sliver of the old value peeking out from under it.
+            var padRight = 2;
+            patches.forEach(function (pt) {
+              var padLeft = Math.max(4, Math.min(16, (pt.box.charW || 5) * (1 + pt.box.precedingChars * 0.08)));
+              var size = Math.max(6, Math.min(pt.box.fontSize, 14));
+              var neededWidth = font.widthOfTextAtSize(pt.text, size);
+              if (neededWidth > pt.box.width) size = Math.max(6, size * (pt.box.width / neededWidth));
+              var finalWidth = Math.max(pt.box.width, font.widthOfTextAtSize(pt.text, size));
+              pdfPage.drawRectangle({
+                x: pt.box.x - padLeft, y: pt.box.y - padRight,
+                width: finalWidth + padLeft + padRight, height: pt.box.height + padRight * 2,
+                color: window.PDFLib.rgb(1, 1, 1)
+              });
+              pdfPage.drawText(pt.text, { x: pt.box.x, y: pt.box.y, size: size, font: font, color: window.PDFLib.rgb(0, 0, 0) });
+            });
+            return pdfDoc.save();
+          });
+        }).then(function (bytes) {
+          return { blob: new Blob([bytes], { type: "application/pdf" }), replaced: patches.length, attempted: patches.length };
+        });
+      });
+    }).catch(function () { return null; });
+  }
+
+  // Renewals try to clone the original's real file first (same layout, only
+  // the core dates/value swapped) - a .docx clones exactly, a text-layer PDF
+  // gets a visual patch (see buildRenewalPdfFromOriginal's caveats), and
+  // everything else (a scan/photo original, an unreachable file, or a fresh
+  // non-renewal contract) falls back to the generated template. The DRAFT
+  // banner only appears in the generated template: a cloned/patched original
+  // is left as close to untouched as possible, so nothing is injected into a
+  // real signed document's layout.
   function generateAgreementDocx(id) {
     var c = STATE.contracts.find(function (x) { return x.id === id; });
     if (!c) return;
@@ -522,9 +665,12 @@
     }
 
     if (orig) {
-      buildRenewalDocxFromOriginal(orig, c).then(function (result) {
+      var origName = orig.fileName || orig.fileUrl || "";
+      var isPdf = /\.pdf($|[?#])/i.test(origName);
+      var clonePromise = isPdf ? buildRenewalPdfFromOriginal(orig, c) : buildRenewalDocxFromOriginal(orig, c);
+      clonePromise.then(function (result) {
         if (result && result.blob) {
-          downloadBlob(result.blob, c.id + "-renewal.docx");
+          downloadBlob(result.blob, c.id + "-renewal." + (isPdf ? "pdf" : "docx"));
           showToast(t("toast_docx_from_original"));
         } else {
           fallback("toast_docx_layout_unavailable");
