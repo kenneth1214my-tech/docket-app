@@ -298,6 +298,50 @@
     return canvas;
   }
 
+  // ---------- DIP: image prep shared by OCR and the vision-assisted LLM step ----------
+  // Phone photos and low-DPI scans are often small enough that Tesseract loses
+  // small print entirely - upscaling before the contrast stretch measurably
+  // helps on that class of input, at the cost of a slightly slower OCR pass.
+  var OCR_MIN_LONG_EDGE = 1800;
+  function upscaleCanvasIfSmall(canvas) {
+    var longEdge = Math.max(canvas.width, canvas.height);
+    if (longEdge >= OCR_MIN_LONG_EDGE || !longEdge) return canvas;
+    var factor = OCR_MIN_LONG_EDGE / longEdge;
+    var scaled = document.createElement("canvas");
+    scaled.width = Math.round(canvas.width * factor);
+    scaled.height = Math.round(canvas.height * factor);
+    var ctx = scaled.getContext("2d");
+    ctx.imageSmoothingEnabled = true;
+    ctx.imageSmoothingQuality = "high";
+    ctx.drawImage(canvas, 0, 0, scaled.width, scaled.height);
+    return scaled;
+  }
+
+  // Downscaled, JPEG-compressed copy for the LLM vision call - kept separate
+  // from the OCR-optimized (upscaled, grayscale) canvas because a vision model
+  // wants a reasonably-sized color image, not the largest/highest-contrast one
+  // Tesseract prefers. Cropped to Anthropic's recommended long edge so cost/
+  // latency stay predictable regardless of the source photo's resolution.
+  var LLM_IMAGE_MAX_EDGE = 1568;
+  var MAX_LLM_IMAGES = 3;
+  function canvasToLlmImage(canvas) {
+    var longEdge = Math.max(canvas.width, canvas.height);
+    var out = canvas;
+    if (longEdge > LLM_IMAGE_MAX_EDGE) {
+      var factor = LLM_IMAGE_MAX_EDGE / longEdge;
+      out = document.createElement("canvas");
+      out.width = Math.round(canvas.width * factor);
+      out.height = Math.round(canvas.height * factor);
+      var ctx = out.getContext("2d");
+      ctx.imageSmoothingEnabled = true;
+      ctx.imageSmoothingQuality = "high";
+      ctx.drawImage(canvas, 0, 0, out.width, out.height);
+    }
+    var dataUrl = out.toDataURL("image/jpeg", 0.85);
+    var comma = dataUrl.indexOf(",");
+    return { mediaType: "image/jpeg", data: dataUrl.slice(comma + 1) };
+  }
+
   function loadFileToCanvas(file) {
     return new Promise(function (resolve, reject) {
       var img = new Image();
@@ -329,6 +373,9 @@
   }
 
   // ---------- file readers ----------
+  // Every reader resolves { text, images } - images is only ever non-empty for
+  // the OCR fallback path (scanned PDFs / photographed pages), and feeds the
+  // vision-assisted LLM step below alongside the OCR'd text.
   function extractPdfText(file, onProgress, ocrLang) {
     return file.arrayBuffer().then(function (buf) {
       if (!global.pdfjsLib) throw new Error("PDF reader did not load — check your connection and try again.");
@@ -345,28 +392,33 @@
       }
       return Promise.all(pagePromises).then(function (pages) { return { pdf: pdf, maxPages: maxPages, text: pages.join("\n") }; });
     }).then(function (result) {
-      if (result.text.trim().length >= OCR_MIN_TEXT_LENGTH) return result.text;
+      if (result.text.trim().length >= OCR_MIN_TEXT_LENGTH) return { text: result.text, images: [] };
       // No meaningful embedded text - this is almost certainly a scanned/photographed
       // page, not a digitally-created PDF. Fall back to rendering each page as an
       // image and running OCR on it instead.
       var pdf = result.pdf, maxPages = result.maxPages;
       var chain = Promise.resolve();
-      var ocrTexts = [];
+      var ocrTexts = [], images = [];
       var _loop = function (i) {
         chain = chain.then(function () {
           return pdf.getPage(i).then(function (page) { return renderPdfPageToCanvas(page, OCR_RENDER_SCALE); })
-            .then(function (canvas) { return ocrImageSource(preprocessCanvasForOcr(canvas), onProgress, "page " + i + "/" + maxPages, ocrLang); })
+            .then(function (rawCanvas) {
+              if (images.length < MAX_LLM_IMAGES) images.push(canvasToLlmImage(rawCanvas));
+              return ocrImageSource(preprocessCanvasForOcr(upscaleCanvasIfSmall(rawCanvas)), onProgress, "page " + i + "/" + maxPages, ocrLang);
+            })
             .then(function (text) { ocrTexts.push(text); });
         });
       };
       for (var i = 1; i <= maxPages; i++) _loop(i);
-      return chain.then(function () { return ocrTexts.join("\n"); });
+      return chain.then(function () { return { text: ocrTexts.join("\n"), images: images }; });
     });
   }
 
   function extractImageText(file, onProgress, ocrLang) {
-    return loadFileToCanvas(file).then(function (canvas) {
-      return ocrImageSource(preprocessCanvasForOcr(canvas), onProgress, "image", ocrLang);
+    return loadFileToCanvas(file).then(function (rawCanvas) {
+      var images = [canvasToLlmImage(rawCanvas)];
+      return ocrImageSource(preprocessCanvasForOcr(upscaleCanvasIfSmall(rawCanvas)), onProgress, "image", ocrLang)
+        .then(function (text) { return { text: text, images: images }; });
     });
   }
 
@@ -380,15 +432,15 @@
       return docXml.async("string");
     }).then(function (xml) {
       var paragraphs = xml.split(/<w:p[ >]/).slice(1);
-      return paragraphs.map(function (p) {
+      return { text: paragraphs.map(function (p) {
         var runs = p.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [];
         return runs.map(function (r) { return r.replace(/<[^>]+>/g, ""); }).join("");
-      }).join("\n");
+      }).join("\n"), images: [] };
     });
   }
 
   function extractTxtText(file) {
-    return file.text();
+    return file.text().then(function (text) { return { text: text, images: [] }; });
   }
 
   function extractText(file, onProgress, ocrLang) {

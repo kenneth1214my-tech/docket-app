@@ -923,9 +923,11 @@
 
   function renderAiDraftRow() {
     var hasKey = !!loadAiKey();
+    var hasImages = !!(UI.modal && UI.modal.extractedImages && UI.modal.extractedImages.length);
+    var hint = !hasKey ? t("ai_draft_hint_no_key") : (hasImages ? t("ai_draft_hint_vision") : t("ai_draft_hint"));
     return '<div class="ai-draft-row">' +
       '<button type="button" class="btn btn-ghost btn-sm" data-action="ai-draft">' + esc(t("ai_draft_btn")) + "</button>" +
-      '<span class="ai-draft-hint">' + esc(hasKey ? t("ai_draft_hint") : t("ai_draft_hint_no_key")) + "</span>" +
+      '<span class="ai-draft-hint">' + esc(hint) + "</span>" +
     "</div>";
   }
 
@@ -1156,7 +1158,8 @@
       if (now - lastRenderAt > 200) { lastRenderAt = now; render(); } // throttle - OCR fires progress very frequently
     }
 
-    window.DocketExtract.extractText(file, onProgress, ocrLangFor(UI.lang)).then(function (text) {
+    window.DocketExtract.extractText(file, onProgress, ocrLangFor(UI.lang)).then(function (extracted) {
+      var text = extracted.text;
       var result = window.DocketExtract.guessFields(text);
       if (UI.modal !== modalRef) return;
       fixCounterpartyGuess(result);
@@ -1165,6 +1168,7 @@
       modalRef.sourceFileName = file.name;
       modalRef.fieldsFound = result.fieldsFound;
       modalRef.extractedText = text;
+      modalRef.extractedImages = extracted.images || [];
       render();
     }).catch(function (err) {
       if (UI.modal !== modalRef) return;
@@ -1193,7 +1197,7 @@
   var AI_DATE_FIELDS = ["startDate", "expiryDate"];
   var AI_NUMBER_FIELDS = ["value", "noticeDays", "termValue"];
 
-  function callClaudeDraft(key, text) {
+  function callClaudeDraft(key, text, images) {
     var trimmed = text.length > CLAUDE_MAX_CHARS ? text.slice(0, CLAUDE_MAX_CHARS) : text;
     var selectInstructions = Object.keys(AI_SELECT_FIELDS).map(function (k) {
       return k + " (pick exactly one of: " + AI_SELECT_FIELDS[k].join(" | ") + " - empty string if you can't tell)";
@@ -1202,8 +1206,15 @@
     var ownNamesNote = ownNames.length
       ? "Our own company is one of: " + ownNames.join(" | ") + " - never put one of these into counterparty. "
       : "";
-    var prompt = "You are filling in a contract-register form from the contract text below. " +
-      ownNamesNote +
+    // For a scanned/photographed source, the OCR text below can be noisy or
+    // missing things entirely (stamps, tables, small print, signature blocks) -
+    // the page images (attached above, when present) are the primary source of
+    // truth in that case, with the OCR text as a secondary reference alongside them.
+    var visionNote = (images && images.length)
+      ? "The image(s) above are the actual scanned page(s) of this contract - read them directly (including any tables, stamps, letterhead, or signature blocks) as your primary source. The OCR-extracted text below is provided only as a secondary reference and may contain recognition errors. "
+      : "";
+    var prompt = "You are filling in a contract-register form from the contract " + (images && images.length ? "shown and " : "") + "text below. " +
+      ownNamesNote + visionNote +
       "Return ONLY a JSON object (no markdown, no commentary) with these keys:\n" +
       "title (the contract's name/title), counterparty (the other party's full legal name, not our own entity), " +
       "counterpartyContact (the counterparty's named contact person or signatory, e.g. from a signature block - empty string if none is named), " +
@@ -1218,7 +1229,14 @@
       "terminationClause (1-2 sentence summary of how/when the contract can be terminated), " +
       "liabilityNotes (1-2 sentence summary of liability caps, indemnities, or insurance requirements), " +
       "tags (a short comma-separated list of 3-6 lowercase keywords for this contract). " +
-      "If the text does not contain enough information for a field, use an empty string for that field. Never guess a select-type field value outside the exact list given.\n\nContract text:\n\n" + trimmed;
+      "If the text does not contain enough information for a field, use an empty string for that field. Never guess a select-type field value outside the exact list given.\n\n" +
+      ((images && images.length) ? "OCR text (secondary reference):\n\n" : "Contract text:\n\n") + trimmed;
+
+    // Vision call: images first so the model reads them before the instructions
+    // that reference them, then the text prompt (which also carries the OCR text).
+    var content = (images && images.length)
+      ? images.map(function (img) { return { type: "image", source: { type: "base64", media_type: img.mediaType, data: img.data } }; }).concat([{ type: "text", text: prompt }])
+      : prompt;
 
     return fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
@@ -1231,7 +1249,7 @@
       body: JSON.stringify({
         model: CLAUDE_MODEL,
         max_tokens: 1000,
-        messages: [{ role: "user", content: prompt }]
+        messages: [{ role: "user", content: content }]
       })
     }).then(function (res) {
       if (!res.ok) {
@@ -1359,6 +1377,7 @@
     var uploadReset = document.querySelector('[data-action="upload-reset"]');
     if (uploadReset) uploadReset.addEventListener("click", function () {
       UI.modal.draft = null; UI.modal.sourceFileName = null; UI.modal.fieldsFound = 0; UI.modal.extractedText = null;
+      UI.modal.extractedImages = null;
       UI.modal.fileUrl = null; UI.modal.fileUploadStatus = null; UI.modal.fileUploadError = null;
       render();
     });
@@ -1571,9 +1590,10 @@
         return;
       }
       var text = UI.modal.extractedText;
-      if (!text) { showToast(t("ai_draft_no_text")); return; }
+      var images = UI.modal.extractedImages;
+      if (!text && !(images && images.length)) { showToast(t("ai_draft_no_text")); return; }
       setAiButtonBusy(true);
-      callClaudeDraft(key, text).then(function (fields) {
+      callClaudeDraft(key, text || "", images).then(function (fields) {
         UI.modal.draft = Object.assign({}, UI.modal.draft, fields);
         applyAiDraftToForm(fields);
         setAiButtonBusy(false);
