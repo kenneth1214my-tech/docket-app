@@ -123,6 +123,7 @@
       clear_filter: "Clear filter",
 
       modal_edit_title: "Edit contract",
+      contract_not_found: "This contract no longer exists - it may have been deleted.",
       modal_new_title: "New contract",
       upload_zone_title: "Drop a contract file here",
       upload_zone_hint: "or click to browse — PDF, DOCX, TXT, or a photo/scan (JPG, PNG)",
@@ -339,6 +340,7 @@
       clear_filter: "清除筛选",
 
       modal_edit_title: "编辑合同",
+      contract_not_found: "该合同已不存在，可能已被删除。",
       modal_new_title: "新建合同",
       upload_zone_title: "将合同文件拖到此处",
       upload_zone_hint: "或点击浏览 — 支持 PDF、DOCX、TXT，或照片/扫描件（JPG、PNG）",
@@ -555,6 +557,7 @@
       clear_filter: "Kosongkan penapis",
 
       modal_edit_title: "Sunting kontrak",
+      contract_not_found: "Kontrak ini tidak lagi wujud - mungkin telah dipadam.",
       modal_new_title: "Kontrak baharu",
       upload_zone_title: "Seret fail kontrak ke sini",
       upload_zone_hint: "atau klik untuk semak imbas — PDF, DOCX, TXT, atau foto/imbasan (JPG, PNG)",
@@ -771,6 +774,7 @@
       clear_filter: "필터 지우기",
 
       modal_edit_title: "계약 수정",
+      contract_not_found: "이 계약은 더 이상 존재하지 않습니다 - 삭제되었을 수 있습니다.",
       modal_new_title: "새 계약",
       upload_zone_title: "계약 파일을 여기로 끌어다 놓으세요",
       upload_zone_hint: "또는 클릭하여 찾아보기 — PDF, DOCX, TXT 또는 사진/스캔본(JPG, PNG)",
@@ -987,6 +991,7 @@
       clear_filter: "フィルターをクリア",
 
       modal_edit_title: "契約を編集",
+      contract_not_found: "この契約は存在しません - 削除された可能性があります。",
       modal_new_title: "新規契約",
       upload_zone_title: "契約ファイルをここにドロップ",
       upload_zone_hint: "またはクリックして参照 — PDF、DOCX、TXT、または写真/スキャン（JPG、PNG）にも対応",
@@ -1203,6 +1208,7 @@
       clear_filter: "Hapus filter",
 
       modal_edit_title: "Ubah kontrak",
+      contract_not_found: "Kontrak ini sudah tidak ada - mungkin telah dihapus.",
       modal_new_title: "Kontrak baru",
       upload_zone_title: "Seret file kontrak ke sini",
       upload_zone_hint: "atau klik untuk menjelajah — PDF, DOCX, TXT, atau foto/hasil pindai (JPG, PNG)",
@@ -1419,6 +1425,7 @@
       clear_filter: "I-clear ang filter",
 
       modal_edit_title: "I-edit ang kontrata",
+      contract_not_found: "Wala na ang kontratang ito - maaaring na-delete na.",
       modal_new_title: "Bagong kontrata",
       upload_zone_title: "I-drag ang file ng kontrata dito",
       upload_zone_hint: "o i-click para mag-browse — PDF, DOCX, TXT, o litrato/na-scan (JPG, PNG)",

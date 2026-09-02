@@ -1259,6 +1259,15 @@
   function renderFormModal() {
     var editing = UI.modal.mode === "edit";
     var c = editing ? STATE.contracts.find(function (x) { return x.id === UI.modal.id; }) : (UI.modal.draft || {});
+    if (editing && !c) {
+      // Defensive fallback only - normal navigation can no longer reach this
+      // since a "Renewed as/from" link now only renders when its target
+      // still exists. Kept in case some other path still points at a
+      // deleted id, so that lands on a message instead of a crash.
+      return '<div class="modal-overlay" data-overlay><div class="modal"><div class="modal-head"><h2>' + esc(t("modal_edit_title")) + '</h2><button class="icon-btn" data-action="close-modal" aria-label="' + esc(t("cancel")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 5l10 10M15 5L5 15"/></svg></button></div><div class="modal-body"><p>' + esc(t("contract_not_found")) + '</p></div><div class="modal-foot"><button type="button" class="btn btn-ghost" data-action="close-modal">' + esc(t("cancel")) + "</button></div></div></div>";
+    }
+    var renewedFromExists = editing && c.renewedFrom && STATE.contracts.some(function (x) { return x.id === c.renewedFrom; });
+    var renewedToExists = editing && c.renewedTo && STATE.contracts.some(function (x) { return x.id === c.renewedTo; });
     return (
       '<div class="modal-overlay" data-overlay>' +
         '<div class="modal">' +
@@ -1266,8 +1275,8 @@
           '<form id="contract-form">' +
           '<div class="modal-body">' +
             (editing && c.fileUrl ? '<a class="view-original-link" href="' + esc(c.fileUrl) + '" target="_blank" rel="noopener"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 2.5h7l3 3v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-14a1 1 0 0 1 1-1z"/><path d="M12 2.5v3h3"/></svg>' + esc(t("view_original_document")) + (c.fileName ? " (" + esc(c.fileName) + ")" : "") + "</a>" : "") +
-            (editing && c.renewedFrom ? '<button type="button" class="view-original-link" data-action="edit" data-id="' + esc(c.renewedFrom) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15.5 6.5A6 6 0 1 0 16.8 11" stroke-linecap="round"/><path d="M15.5 3v4h-4" stroke-linecap="round" stroke-linejoin="round"/></svg>' + esc(t("renewed_from_label")) + " " + esc(c.renewedFrom) + "</button>" : "") +
-            (editing && c.renewedTo ? '<button type="button" class="view-original-link" data-action="edit" data-id="' + esc(c.renewedTo) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15.5 6.5A6 6 0 1 0 16.8 11" stroke-linecap="round"/><path d="M15.5 3v4h-4" stroke-linecap="round" stroke-linejoin="round"/></svg>' + esc(t("renewed_as_label")) + " " + esc(c.renewedTo) + "</button>" : "") +
+            (renewedFromExists ? '<button type="button" class="view-original-link" data-action="edit" data-id="' + esc(c.renewedFrom) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15.5 6.5A6 6 0 1 0 16.8 11" stroke-linecap="round"/><path d="M15.5 3v4h-4" stroke-linecap="round" stroke-linejoin="round"/></svg>' + esc(t("renewed_from_label")) + " " + esc(c.renewedFrom) + "</button>" : "") +
+            (renewedToExists ? '<button type="button" class="view-original-link" data-action="edit" data-id="' + esc(c.renewedTo) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15.5 6.5A6 6 0 1 0 16.8 11" stroke-linecap="round"/><path d="M15.5 3v4h-4" stroke-linecap="round" stroke-linejoin="round"/></svg>' + esc(t("renewed_as_label")) + " " + esc(c.renewedTo) + "</button>" : "") +
             (editing ? "" : renderUploadZone()) +
             '<div class="fieldset-title">' + esc(t("fs_basics")) + "</div>" +
             '<div class="field-grid">' +
@@ -1307,7 +1316,7 @@
             (editing ? renderAddendumsSection(c) : "") +
           "</div>" +
           '<div class="modal-foot">' +
-            (editing && !c.renewedTo ? '<button type="button" class="btn btn-ghost" data-action="renew" data-id="' + esc(c.id) + '">' + esc(t("action_renew")) + "</button>" : "") +
+            (editing && !renewedToExists ? '<button type="button" class="btn btn-ghost" data-action="renew" data-id="' + esc(c.id) + '">' + esc(t("action_renew")) + "</button>" : "") +
             (editing ? '<button type="button" class="btn btn-ghost" data-action="generate-docx" data-id="' + esc(c.id) + '">' + esc(t("generate_docx_btn")) + "</button>" : "") +
             '<button type="button" class="btn btn-ghost" data-action="close-modal">' + esc(t("cancel")) + '</button><button type="submit" class="btn btn-primary"' + (!editing && UI.modal.reading ? " disabled" : "") + '>' + (editing ? esc(t("save_changes")) : esc(t("add_contract_btn"))) + "</button></div>" +
           "</form>" +
@@ -1930,7 +1939,19 @@
     var confirmDel = document.querySelector('[data-action="confirm-delete"]');
     if (confirmDel) confirmDel.addEventListener("click", function () {
       var id = confirmDel.getAttribute("data-id");
-      persist(function (next) { next.contracts = next.contracts.filter(function (c) { return c.id !== id; }); }, "toast_deleted");
+      persist(function (next) {
+        next.contracts = next.contracts.filter(function (c) { return c.id !== id; });
+        // Deleting either side of a renewal pair leaves the other side
+        // pointing at an id that no longer exists unless cleared here too -
+        // that's what produced a stale "Renewed as/from" link before this fix.
+        next.contracts.forEach(function (c) {
+          if (c.renewedFrom === id) delete c.renewedFrom;
+          if (c.renewedTo === id) {
+            delete c.renewedTo;
+            if (c.status === "Renewed") c.status = (c.expiryDate && c.expiryDate < addDays(0)) ? "Expired" : "Active";
+          }
+        });
+      }, "toast_deleted");
     });
 
     var searchBox = document.getElementById("search-box");
