@@ -353,11 +353,7 @@
   }
 
   function logoMark() {
-    return '<svg class="logo" viewBox="0 0 32 32" fill="none" aria-hidden="true">' +
-      '<rect x="1" y="1" width="30" height="30" rx="9" fill="var(--primary)"/>' +
-      '<path d="M11.5 9.5h9a1 1 0 0 1 1 1v12a1 1 0 0 1-1 1h-9a1 1 0 0 1-1-1v-12a1 1 0 0 1 1-1z" stroke="var(--primary-ink)" stroke-width="1.6"/>' +
-      '<path d="M13 15.2l2.1 2.1 3.9-4.2" stroke="var(--primary-ink)" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round"/>' +
-      "</svg>";
+    return '<img class="logo" src="logo.png" alt="" aria-hidden="true">';
   }
 
   var KPI_ICONS = {

@@ -91,7 +91,7 @@ body {
   width: 100%; max-width: 340px; background: var(--surface); border: 1px solid var(--border);
   border-radius: 14px; box-shadow: var(--shadow); padding: 32px 28px; text-align: center;
 }
-.login-card .logo { width: 44px; height: 44px; margin-bottom: 14px; }
+.login-card .logo { width: 44px; height: 44px; margin-bottom: 14px; object-fit: contain; border-radius: 12px; }
 .login-card h1 { font-size: 20px; margin-bottom: 6px; }
 .login-sub { font-size: 13px; color: var(--ink-muted); line-height: 1.5; margin-bottom: 22px; }
 .login-card form { display: flex; flex-direction: column; gap: 12px; }
@@ -124,7 +124,7 @@ button { font-family: inherit; }
   gap: 28px;
 }
 .brand { display: flex; align-items: center; gap: 9px; padding: 0 6px; }
-.brand .logo { width: 30px; height: 30px; flex-shrink: 0; }
+.brand .logo { width: 30px; height: 30px; flex-shrink: 0; object-fit: contain; border-radius: 8px; }
 .brand .wordmark { display: flex; flex-direction: column; line-height: 1.15; }
 .brand .mark { font-family: var(--font-display); font-weight: 700; font-size: 20px; letter-spacing: -0.02em; color: var(--ink); }
 .brand .tag { font-size: 10.5px; color: var(--ink-faint); text-transform: uppercase; letter-spacing: 0.07em; }
