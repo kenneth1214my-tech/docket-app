@@ -384,6 +384,7 @@
             '<button class="link-btn" data-action="change-password">' + esc(t("change_password_link")) + "</button>" +
             '<button class="link-btn" data-action="logout">' + esc(t("logout_btn")) + "</button>" +
           "</div>" +
+          '<div class="app-credit">' + esc(t("credit_by")) + " Kenneth SOO</div>" +
         "</div>" +
       "</div>"
     );
@@ -1589,6 +1590,7 @@
           '<button type="submit" class="btn btn-primary">' + esc(t("login_submit")) + "</button>" +
         "</form>" +
         '<button type="button" class="link-btn login-forgot-link" data-action="login-forgot">' + esc(t("forgot_password_link")) + "</button>" +
+        '<div class="app-credit">' + esc(t("credit_by")) + " Kenneth SOO</div>" +
       "</div></div>"
     );
   }

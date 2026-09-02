@@ -141,6 +141,8 @@ button { font-family: inherit; }
 .sidebar-foot { margin-top: auto; padding: 12px 10px; border-top: 1px solid var(--border); font-size: 11.5px; color: var(--ink-faint); line-height: 1.5; display: flex; flex-direction: column; gap: 8px; }
 .sidebar-foot strong { color: var(--ink-muted); }
 .sidebar-actions { display: flex; flex-direction: column; gap: 6px; }
+.app-credit { font-size: 10.5px; color: var(--ink-faint); opacity: 0.75; }
+.login-card .app-credit { margin-top: 18px; }
 .link-btn { background: none; border: none; padding: 0; color: var(--primary); font-size: 12px; font-weight: 600; cursor: pointer; text-align: left; }
 .link-btn:hover { text-decoration: underline; }
 
