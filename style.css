@@ -376,6 +376,7 @@ select.chip-select { padding: 7px 10px; font-size: 12.5px; }
 .view-original-link { display: inline-flex; align-items: center; gap: 6px; font-size: 12.5px; font-weight: 600; color: var(--primary); text-decoration: none; margin-bottom: 16px; }
 .view-original-link:hover { text-decoration: underline; }
 .view-original-link svg { width: 15px; height: 15px; flex-shrink: 0; }
+button.view-original-link { background: none; border: none; padding: 0; font-family: inherit; cursor: pointer; margin-right: 16px; }
 
 .addendum-list { display: flex; flex-direction: column; gap: 8px; margin-bottom: 10px; }
 .addendum-row { display: flex; align-items: flex-start; gap: 10px; padding: 10px 12px; border: 1px solid var(--border); border-radius: 8px; background: var(--surface-2); }

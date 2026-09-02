@@ -25,6 +25,10 @@
   import { upload } from "https://esm.sh/@vercel/blob@2/client";
   window.VercelBlobUpload = upload;
 </script>
+<script type="module">
+  import * as docxLib from "https://esm.sh/docx@9";
+  window.DocxLib = docxLib;
+</script>
 <script src="i18n.js"></script>
 <script src="extract.js"></script>
 <script src="app.js"></script>

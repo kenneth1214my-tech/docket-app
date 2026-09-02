@@ -218,6 +218,12 @@
     d.setUTCMonth(d.getUTCMonth() + months);
     return d.toISOString().slice(0, 10);
   }
+  function addDaysISO(iso, days) {
+    var p = iso.split("-").map(Number);
+    var d = new Date(Date.UTC(p[0], p[1] - 1, p[2]));
+    d.setUTCDate(d.getUTCDate() + days);
+    return d.toISOString().slice(0, 10);
+  }
   var SAMPLE_CONTRACTS = [
     { id: "CTR-2026-001", title: "Air Freight Forwarding Agreement", entity: "Entity A", counterparty: "Global Air Cargo (Singapore) Pte Ltd", counterpartyType: "Vendor / Supplier", department: "Operations / Logistics", contractType: "Freight Forwarding Agreement", riskTier: "Critical", confidentiality: "Confidential", status: "Active", startDate: addDays(-400), expiryDate: addDays(20), autoRenewal: "Yes", noticeDays: 60, value: 850000, currency: "SGD", paymentTerms: "Net 30", governingLaw: "Singapore", obligations: "Volume-based air freight rates; SLA 48hr pickup.", terminationClause: "Either party 60 days written notice.", liabilityNotes: "Liability capped at 1x annual fees.", tags: "freight, air, critical-vendor", notes: "Sample record — edit or delete freely." },
     { id: "CTR-2025-014", title: "Customs Brokerage Services Agreement", entity: "Entity B", counterparty: "Continental Freight Partners Sdn Bhd", counterpartyType: "Vendor / Supplier", department: "Operations / Logistics", contractType: "Customs Brokerage Agreement", riskTier: "High", confidentiality: "Internal", status: "Active", startDate: addDays(-200), expiryDate: addDays(45), autoRenewal: "Yes", noticeDays: 30, value: 120000, currency: "MYR", paymentTerms: "Net 45", governingLaw: "Malaysia", obligations: "Customs clearance and duty advance.", terminationClause: "30 days notice; auto-renews annually.", liabilityNotes: "Indemnity capped at MYR 500,000.", tags: "customs, malaysia", notes: "Sample record — edit or delete freely." },
@@ -296,6 +302,109 @@
     var wb = window.XLSX.utils.book_new();
     window.XLSX.utils.book_append_sheet(wb, ws, "Contracts");
     window.XLSX.writeFile(wb, "docket-contracts-" + new Date().toISOString().slice(0, 10) + ".xlsx");
+  }
+
+  // Dates inside a document meant for signing stay in English regardless of
+  // the UI language - fmtDate()'s locale switch is for on-screen display,
+  // not for a legal document that will actually be printed and signed.
+  function fmtDateLong(iso) {
+    if (!iso) return "___________________";
+    var d = new Date(iso + "T00:00:00");
+    if (isNaN(d)) return "___________________";
+    return d.toLocaleDateString("en-SG", { day: "2-digit", month: "long", year: "numeric" });
+  }
+
+  // Builds a ready-to-review draft agreement from a contract's stored data.
+  // This is a starting template, not a finished legal document - the DRAFT
+  // banner is baked into the .docx itself (not just a UI toast) so the
+  // caveat travels with the file wherever it's forwarded.
+  function generateAgreementDocx(id) {
+    var c = STATE.contracts.find(function (x) { return x.id === id; });
+    if (!c) return;
+    if (!window.DocxLib) { showToast(t("toast_docx_lib_missing")); return; }
+    var D = window.DocxLib;
+    var orig = c.renewedFrom ? STATE.contracts.find(function (x) { return x.id === c.renewedFrom; }) : null;
+
+    function p(text, opts) {
+      opts = opts || {};
+      return new D.Paragraph({ spacing: { after: 160 }, children: [new D.TextRun(Object.assign({ text: text }, opts))] });
+    }
+    function h(text) {
+      return new D.Paragraph({ heading: D.HeadingLevel.HEADING_2, spacing: { before: 240, after: 120 }, children: [new D.TextRun({ text: text, bold: true })] });
+    }
+    function labelValue(label, value) {
+      return new D.Paragraph({ spacing: { after: 60 }, children: [
+        new D.TextRun({ text: label + ": ", bold: true }),
+        new D.TextRun({ text: (value == null || value === "") ? "—" : String(value) })
+      ] });
+    }
+    function sigBlock(partyLabel, name, designation) {
+      return [
+        p("For and on behalf of " + partyLabel + ":", { bold: true }),
+        new D.Paragraph({ spacing: { before: 360, after: 40 }, children: [new D.TextRun("Signature: ___________________________")] }),
+        new D.Paragraph({ spacing: { after: 40 }, children: [new D.TextRun("Name: " + (name || "___________________________"))] }),
+        new D.Paragraph({ spacing: { after: 40 }, children: [new D.TextRun("Designation: " + (designation || "___________________________"))] }),
+        new D.Paragraph({ spacing: { after: 240 }, children: [new D.TextRun("Date: ___________________________")] })
+      ];
+    }
+
+    var heading = c.renewedFrom ? "RENEWAL AGREEMENT" : String(tx(c.contractType) || "AGREEMENT").toUpperCase();
+    var children = [];
+    children.push(new D.Paragraph({ alignment: D.AlignmentType.CENTER, spacing: { after: 60 }, children: [new D.TextRun({ text: heading, bold: true, size: 32 })] }));
+    children.push(new D.Paragraph({ alignment: D.AlignmentType.CENTER, spacing: { after: 200 }, children: [new D.TextRun({ text: "Reference: " + c.id, size: 20, color: "666666" })] }));
+
+    children.push(new D.Paragraph({
+      spacing: { before: 120, after: 240 },
+      children: [
+        new D.TextRun({ text: "DRAFT FOR REVIEW: ", bold: true, color: "C0392B" }),
+        new D.TextRun({ text: "This document was auto-generated from Docket records and has not been reviewed by legal counsel. Verify all terms, dates and figures, and obtain legal sign-off before sending it out for signature.", italics: true, color: "922B21" })
+      ]
+    }));
+
+    children.push(p("This Agreement is made between " + (c.entity || "___________________") + " (\"the Company\") and " +
+      (c.counterparty || "___________________") + (tx(c.counterpartyType) ? " (" + tx(c.counterpartyType) + ")" : "") + " (\"the Counterparty\")" +
+      (c.counterpartyContact ? ", represented by " + c.counterpartyContact + (c.counterpartyDesignation ? " (" + c.counterpartyDesignation + ")" : "") : "") + "."));
+
+    if (orig) {
+      children.push(p("This Agreement renews and supersedes the prior agreement " + orig.id +
+        (orig.title ? " (\"" + orig.title + "\")" : "") +
+        (orig.expiryDate ? ", which expired on " + fmtDateLong(orig.expiryDate) : "") + "."));
+    }
+
+    children.push(h("1. Key Terms"));
+    children.push(labelValue("Title / Reference", c.title));
+    children.push(labelValue("Contract Type", tx(c.contractType)));
+    children.push(labelValue("Start Date", fmtDateLong(c.startDate)));
+    children.push(labelValue("Expiry Date", fmtDateLong(c.expiryDate)));
+    if (c.termValue) children.push(labelValue("Term", c.termValue + " " + (tx(c.termUnit) || "")));
+    children.push(labelValue("Contract Value", fmtMoney(c.value, c.currency)));
+    if (c.paymentTerms) children.push(labelValue("Payment Terms", c.paymentTerms));
+    if (c.governingLaw) children.push(labelValue("Governing Law", c.governingLaw));
+    children.push(labelValue("Auto-Renewal", tx(c.autoRenewal)));
+    if (c.noticeDays) children.push(labelValue("Notice Period", c.noticeDays + " days"));
+
+    if (c.obligations) { children.push(h("2. Obligations")); children.push(p(c.obligations)); }
+    if (c.terminationClause) { children.push(h("3. Termination")); children.push(p(c.terminationClause)); }
+    if (c.liabilityNotes) { children.push(h("4. Liability")); children.push(p(c.liabilityNotes)); }
+
+    children.push(h("Signatures"));
+    children = children.concat(sigBlock(c.entity || "the Company", "", ""));
+    children = children.concat(sigBlock(c.counterparty || "the Counterparty", c.counterpartyContact, c.counterpartyDesignation));
+
+    var doc = new D.Document({ sections: [{ children: children }] });
+    D.Packer.toBlob(doc).then(function (blob) {
+      var url = URL.createObjectURL(blob);
+      var a = document.createElement("a");
+      a.href = url;
+      a.download = c.id + "-agreement-draft.docx";
+      document.body.appendChild(a);
+      a.click();
+      a.remove();
+      URL.revokeObjectURL(url);
+      showToast(t("toast_docx_generated"));
+    }).catch(function () {
+      showToast(t("toast_docx_error"));
+    });
   }
 
   function importData(file) {
@@ -627,6 +736,7 @@
               '<td class="num">' + fmtMoney(c.value, c.currency) + "</td>" +
               '<td><div class="row-actions">' +
                 (c.fileUrl ? '<a class="icon-btn" href="' + esc(c.fileUrl) + '" target="_blank" rel="noopener" title="' + esc(t("view_original_document")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 2.5h7l3 3v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-14a1 1 0 0 1 1-1z"/><path d="M12 2.5v3h3"/></svg></a>' : "") +
+                '<button class="icon-btn" data-action="renew" data-id="' + esc(c.id) + '" title="' + esc(t("action_renew")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15.5 6.5A6 6 0 1 0 16.8 11" stroke-linecap="round"/><path d="M15.5 3v4h-4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
                 '<button class="icon-btn" data-action="edit" data-id="' + esc(c.id) + '" title="' + esc(t("action_edit")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13.5 3.5l3 3L6 17l-4 1 1-4z"/></svg></button>' +
                 '<button class="icon-btn" data-action="delete" data-id="' + esc(c.id) + '" title="' + esc(t("action_delete")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h12M8 6V4h4v2m-7 0 1 11h8l1-11"/></svg></button>' +
               "</div></td>" +
@@ -876,6 +986,8 @@
           '<form id="contract-form">' +
           '<div class="modal-body">' +
             (editing && c.fileUrl ? '<a class="view-original-link" href="' + esc(c.fileUrl) + '" target="_blank" rel="noopener"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 2.5h7l3 3v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-14a1 1 0 0 1 1-1z"/><path d="M12 2.5v3h3"/></svg>' + esc(t("view_original_document")) + (c.fileName ? " (" + esc(c.fileName) + ")" : "") + "</a>" : "") +
+            (editing && c.renewedFrom ? '<button type="button" class="view-original-link" data-action="edit" data-id="' + esc(c.renewedFrom) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15.5 6.5A6 6 0 1 0 16.8 11" stroke-linecap="round"/><path d="M15.5 3v4h-4" stroke-linecap="round" stroke-linejoin="round"/></svg>' + esc(t("renewed_from_label")) + " " + esc(c.renewedFrom) + "</button>" : "") +
+            (editing && c.renewedTo ? '<button type="button" class="view-original-link" data-action="edit" data-id="' + esc(c.renewedTo) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15.5 6.5A6 6 0 1 0 16.8 11" stroke-linecap="round"/><path d="M15.5 3v4h-4" stroke-linecap="round" stroke-linejoin="round"/></svg>' + esc(t("renewed_as_label")) + " " + esc(c.renewedTo) + "</button>" : "") +
             (editing ? "" : renderUploadZone()) +
             '<div class="fieldset-title">' + esc(t("fs_basics")) + "</div>" +
             '<div class="field-grid">' +
@@ -914,7 +1026,10 @@
             fieldTextarea("notes", t("f_notes"), c.notes) +
             (editing ? renderAddendumsSection(c) : "") +
           "</div>" +
-          '<div class="modal-foot"><button type="button" class="btn btn-ghost" data-action="close-modal">' + esc(t("cancel")) + '</button><button type="submit" class="btn btn-primary"' + (!editing && UI.modal.reading ? " disabled" : "") + '>' + (editing ? esc(t("save_changes")) : esc(t("add_contract_btn"))) + "</button></div>" +
+          '<div class="modal-foot">' +
+            (editing && !c.renewedTo ? '<button type="button" class="btn btn-ghost" data-action="renew" data-id="' + esc(c.id) + '">' + esc(t("action_renew")) + "</button>" : "") +
+            (editing ? '<button type="button" class="btn btn-ghost" data-action="generate-docx" data-id="' + esc(c.id) + '">' + esc(t("generate_docx_btn")) + "</button>" : "") +
+            '<button type="button" class="btn btn-ghost" data-action="close-modal">' + esc(t("cancel")) + '</button><button type="submit" class="btn btn-primary"' + (!editing && UI.modal.reading ? " disabled" : "") + '>' + (editing ? esc(t("save_changes")) : esc(t("add_contract_btn"))) + "</button></div>" +
           "</form>" +
         "</div>" +
       "</div>"
@@ -923,6 +1038,28 @@
 
   // ---------- events ----------
   function openNewModal() { UI.modal = { mode: "add", draft: null, sourceFileName: null, reading: false, fieldsFound: 0 }; render(); }
+
+  // Renewing clones the original's terms rather than starting blank - the
+  // new agreement almost always keeps the same counterparty/rates/clauses,
+  // just shifted to a fresh term. Draft doc + IDs are stripped since they
+  // belong to the original, not the renewal.
+  function startRenewal(id) {
+    var orig = STATE.contracts.find(function (c) { return c.id === id; });
+    if (!orig) return;
+    var draft = JSON.parse(JSON.stringify(orig));
+    delete draft.id;
+    delete draft.addendums;
+    delete draft.fileUrl;
+    delete draft.fileName;
+    delete draft.renewedFrom;
+    delete draft.renewedTo;
+    draft.status = "Draft";
+    if (orig.expiryDate) draft.startDate = addDaysISO(orig.expiryDate, 1);
+    draft.expiryDate = (draft.startDate && draft.termValue) ?
+      addMonthsISO(draft.startDate, draft.termUnit === "Years" ? draft.termValue * 12 : draft.termValue) : "";
+    UI.modal = { mode: "add", draft: draft, sourceFileName: null, reading: false, fieldsFound: 0, renewedFromId: id };
+    render();
+  }
 
   // Bot/abuse deterrent for /api/upload, not a real secret - this app has no
   // login, so the code is necessarily visible in the public client bundle.
@@ -1291,6 +1428,12 @@
     document.querySelectorAll('[data-action="edit"]').forEach(function (el) {
       el.addEventListener("click", function () { UI.modal = { mode: "edit", id: el.getAttribute("data-id") }; render(); });
     });
+    document.querySelectorAll('[data-action="renew"]').forEach(function (el) {
+      el.addEventListener("click", function () { startRenewal(el.getAttribute("data-id")); });
+    });
+    document.querySelectorAll('[data-action="generate-docx"]').forEach(function (el) {
+      el.addEventListener("click", function () { generateAgreementDocx(el.getAttribute("data-id")); });
+    });
     document.querySelectorAll('[data-action="delete"]').forEach(function (el) {
       el.addEventListener("click", function () { UI.modal = { mode: "delete", id: el.getAttribute("data-id") }; render(); });
     });
@@ -1550,10 +1693,16 @@
           }, "toast_updated");
         } else {
           if (UI.modal.fileUrl) { data.fileUrl = UI.modal.fileUrl; data.fileName = UI.modal.sourceFileName; }
+          var renewedFromId = UI.modal.renewedFromId || null;
+          if (renewedFromId) data.renewedFrom = renewedFromId;
           persist(function (next) {
             data.id = nextContractId(next.contracts);
+            if (renewedFromId) {
+              var origIdx = next.contracts.findIndex(function (c) { return c.id === renewedFromId; });
+              if (origIdx !== -1) next.contracts[origIdx] = Object.assign({}, next.contracts[origIdx], { status: "Renewed", renewedTo: data.id });
+            }
             next.contracts.push(data);
-          }, "toast_added");
+          }, renewedFromId ? "toast_renewed" : "toast_added");
         }
       });
     }
