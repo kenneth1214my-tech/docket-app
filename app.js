@@ -167,7 +167,10 @@
 
   function computeAlert(c) {
     if (!c.expiryDate) return { days: null, key: "na", label: "N/A" };
-    if (["Expired", "Terminated", "Archived"].indexOf(c.status) !== -1) return { days: null, key: "na", label: "N/A" };
+    // Once superseded by a renewal, the successor is what needs tracking -
+    // otherwise the original keeps showing as Overdue/Critical (inflating
+    // the KPI counts) right next to a status pill that reads "Renewed".
+    if (["Expired", "Terminated", "Archived", "Renewed"].indexOf(c.status) !== -1) return { days: null, key: "na", label: "N/A" };
     var exp = new Date(c.expiryDate + "T00:00:00");
     if (isNaN(exp)) return { days: null, key: "na", label: "N/A" };
     var days = Math.round((exp - todayMidnight()) / 86400000);
@@ -208,6 +211,14 @@
   function contractSeq(c) {
     var m = /^CTR-(\d{4})-(\d{3})$/.exec(c.id || "");
     return m ? Number(m[1]) * 1000 + Number(m[2]) : -1;
+  }
+
+  // True only if renewedTo points at a contract that still actually exists -
+  // used to hide the Renew action once a valid renewal is already on file
+  // (both here and in the edit modal), rather than trusting the pointer
+  // itself, which can otherwise go stale (see the delete cleanup above).
+  function hasValidRenewal(c) {
+    return !!(c.renewedTo && STATE.contracts.some(function (x) { return x.id === c.renewedTo; }));
   }
 
   function nextContractId(contracts, year) {
@@ -1014,7 +1025,7 @@
               '<td class="num">' + fmtMoney(c.value, c.currency) + "</td>" +
               '<td><div class="row-actions">' +
                 (c.fileUrl ? '<a class="icon-btn" href="' + esc(c.fileUrl) + '" target="_blank" rel="noopener" title="' + esc(t("view_original_document")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 2.5h7l3 3v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-14a1 1 0 0 1 1-1z"/><path d="M12 2.5v3h3"/></svg></a>' : "") +
-                '<button class="icon-btn" data-action="renew" data-id="' + esc(c.id) + '" title="' + esc(t("action_renew")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15.5 6.5A6 6 0 1 0 16.8 11" stroke-linecap="round"/><path d="M15.5 3v4h-4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>' +
+                (hasValidRenewal(c) ? "" : '<button class="icon-btn" data-action="renew" data-id="' + esc(c.id) + '" title="' + esc(t("action_renew")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15.5 6.5A6 6 0 1 0 16.8 11" stroke-linecap="round"/><path d="M15.5 3v4h-4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>') +
                 '<button class="icon-btn" data-action="edit" data-id="' + esc(c.id) + '" title="' + esc(t("action_edit")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13.5 3.5l3 3L6 17l-4 1 1-4z"/></svg></button>' +
                 '<button class="icon-btn" data-action="delete" data-id="' + esc(c.id) + '" title="' + esc(t("action_delete")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h12M8 6V4h4v2m-7 0 1 11h8l1-11"/></svg></button>' +
               "</div></td>" +
@@ -1267,7 +1278,7 @@
       return '<div class="modal-overlay" data-overlay><div class="modal"><div class="modal-head"><h2>' + esc(t("modal_edit_title")) + '</h2><button class="icon-btn" data-action="close-modal" aria-label="' + esc(t("cancel")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.8"><path d="M5 5l10 10M15 5L5 15"/></svg></button></div><div class="modal-body"><p>' + esc(t("contract_not_found")) + '</p></div><div class="modal-foot"><button type="button" class="btn btn-ghost" data-action="close-modal">' + esc(t("cancel")) + "</button></div></div></div>";
     }
     var renewedFromExists = editing && c.renewedFrom && STATE.contracts.some(function (x) { return x.id === c.renewedFrom; });
-    var renewedToExists = editing && c.renewedTo && STATE.contracts.some(function (x) { return x.id === c.renewedTo; });
+    var renewedToExists = editing && hasValidRenewal(c);
     return (
       '<div class="modal-overlay" data-overlay>' +
         '<div class="modal">' +

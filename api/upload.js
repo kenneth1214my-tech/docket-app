@@ -4,6 +4,7 @@
 // functions hard-cap request bodies at ~4.5MB, and real scanned contracts
 // (photographed leases, multi-page agreements) routinely exceed that.
 const { handleUpload } = require("@vercel/blob/client");
+const { requireSession } = require("./_session");
 
 const ALLOWED_CONTENT_TYPES = [
   "application/pdf",
@@ -21,6 +22,12 @@ module.exports = async (req, res) => {
     res.status(405).json({ error: "Method not allowed" });
     return;
   }
+  // The upload access code baked into the client bundle is only an abuse
+  // deterrent (it's necessarily public - see app.js), not real auth. Vercel's
+  // Deployment Protection currently blocks unauthenticated traffic at the
+  // edge regardless, but requiring this app's own session here too means
+  // uploads stay gated even if that outer layer is ever turned off.
+  if (!requireSession(req, res)) return;
 
   let body = req.body;
   if (!body || typeof body !== "object") {
