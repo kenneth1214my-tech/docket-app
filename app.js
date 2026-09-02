@@ -25,7 +25,7 @@
   // Free-text fields standardized to uppercase (logistics/customs-doc
   // convention). Select fields are left alone - their values are exact
   // taxonomy strings and uppercasing would break every lookup against them.
-  var UPPERCASE_FIELDS = ["title", "counterparty", "paymentTerms", "governingLaw", "obligations", "terminationClause", "liabilityNotes", "tags", "notes"];
+  var UPPERCASE_FIELDS = ["title", "counterparty", "counterpartyContact", "counterpartyDesignation", "paymentTerms", "governingLaw", "obligations", "terminationClause", "liabilityNotes", "tags", "notes"];
 
   // Applied on every load, not just on save, so records created before this
   // rule existed (or brought in via JSON import) get normalized too, instead
@@ -268,7 +268,7 @@
 
   function exportExcel() {
     if (!window.XLSX) { showToast(t("toast_excel_lib_missing")); return; }
-    var headers = ["ID", t("f_title"), t("col_entity"), t("f_counterparty"), t("f_counterpartyType"), t("f_department"),
+    var headers = ["ID", t("f_title"), t("col_entity"), t("f_counterparty"), t("f_counterpartyType"), t("f_counterpartyContact"), t("f_counterpartyDesignation"), t("f_department"),
       t("f_contractType"), t("f_riskTier"), t("f_confidentiality"), t("f_status"),
       t("f_startDate"), t("f_term"), t("f_expiryDate"), t("col_alert"), t("f_autoRenewal"), t("f_noticeDays"),
       t("f_value"), t("f_currency"), t("f_paymentTerms"), t("f_governingLaw"),
@@ -278,6 +278,7 @@
       var a = computeAlert(c);
       return [
         c.id, c.title || "", tx(c.entity) || "", c.counterparty || "", tx(c.counterpartyType) || "",
+        c.counterpartyContact || "", c.counterpartyDesignation || "",
         tx(c.department) || "", tx(c.contractType) || "", tx(c.riskTier) || "", tx(c.confidentiality) || "",
         tx(c.status) || "", c.startDate ? new Date(c.startDate + "T00:00:00") : "",
         c.termValue != null && c.termValue !== "" ? (c.termValue + " " + (tx(c.termUnit) || "")).trim() : "",
@@ -576,7 +577,7 @@
     var q = UI.search.trim().toLowerCase();
     if (q) {
       cs = cs.filter(function (c) {
-        return [c.id, c.title, c.entity, c.counterparty, c.tags].join(" ").toLowerCase().indexOf(q) !== -1;
+        return [c.id, c.title, c.entity, c.counterparty, c.counterpartyContact, c.tags].join(" ").toLowerCase().indexOf(q) !== -1;
       });
     }
     if (UI.statusFilter !== "all") cs = cs.filter(function (c) { return c.status === UI.statusFilter; });
@@ -882,6 +883,8 @@
               fieldSelectEntity(c.entity) +
               fieldInput("counterparty", t("f_counterparty"), c.counterparty, "text", true) +
               fieldSelect("counterpartyType", t("f_counterpartyType"), TAXONOMY.counterpartyTypes, c.counterpartyType) +
+              fieldInput("counterpartyContact", t("f_counterpartyContact"), c.counterpartyContact, "text") +
+              fieldInput("counterpartyDesignation", t("f_counterpartyDesignation"), c.counterpartyDesignation, "text") +
               fieldSelect("department", t("f_department"), TAXONOMY.departments, c.department) +
               fieldSelect("contractType", t("f_contractType"), TAXONOMY.contractTypes, c.contractType, true) +
               fieldSelect("riskTier", t("f_riskTier"), TAXONOMY.riskTiers, c.riskTier) +
@@ -1049,7 +1052,7 @@
     autoRenewal: ["Yes", "No"],
     termUnit: ["Months", "Years"]
   };
-  var AI_TEXT_FIELDS = ["title", "counterparty", "governingLaw", "paymentTerms", "obligations", "terminationClause", "liabilityNotes", "tags"];
+  var AI_TEXT_FIELDS = ["title", "counterparty", "counterpartyContact", "counterpartyDesignation", "governingLaw", "paymentTerms", "obligations", "terminationClause", "liabilityNotes", "tags"];
   var AI_DATE_FIELDS = ["startDate", "expiryDate"];
   var AI_NUMBER_FIELDS = ["value", "noticeDays", "termValue"];
 
@@ -1066,6 +1069,8 @@
       ownNamesNote +
       "Return ONLY a JSON object (no markdown, no commentary) with these keys:\n" +
       "title (the contract's name/title), counterparty (the other party's full legal name, not our own entity), " +
+      "counterpartyContact (the counterparty's named contact person or signatory, e.g. from a signature block - empty string if none is named), " +
+      "counterpartyDesignation (that person's job title/designation, e.g. \"Managing Director\" - empty string if not stated), " +
       "governingLaw (the jurisdiction whose laws govern the contract), paymentTerms (e.g. \"Net 30\"), " +
       "startDate and expiryDate (ISO format YYYY-MM-DD, compute expiryDate from a stated term length plus startDate if no explicit expiry date is given), " +
       "termValue (the stated contract term/duration as a plain number, e.g. 3 for \"three (3) years\" - empty string if no duration is stated), " +
