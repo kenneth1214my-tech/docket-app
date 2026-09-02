@@ -201,6 +201,15 @@
     return 0;
   }
 
+  // Tie-break only - lets two contracts landing in the same alert bucket (e.g.
+  // several Drafts, or several with no date at all) resolve to newest-added
+  // first, so a brand-new contract doesn't get stuck behind older ones just
+  // because it happened to be appended later to the underlying array.
+  function contractSeq(c) {
+    var m = /^CTR-(\d{4})-(\d{3})$/.exec(c.id || "");
+    return m ? Number(m[1]) * 1000 + Number(m[2]) : -1;
+  }
+
   function nextContractId(contracts, year) {
     var y = year || new Date().getFullYear();
     var max = 0;
@@ -314,17 +323,26 @@
     return d.toLocaleDateString("en-SG", { day: "2-digit", month: "long", year: "numeric" });
   }
 
-  // Builds a ready-to-review draft agreement from a contract's stored data.
-  // This is a starting template, not a finished legal document - the DRAFT
-  // banner is baked into the .docx itself (not just a UI toast) so the
-  // caveat travels with the file wherever it's forwarded.
-  function generateAgreementDocx(id) {
-    var c = STATE.contracts.find(function (x) { return x.id === id; });
-    if (!c) return;
-    if (!window.DocxLib) { showToast(t("toast_docx_lib_missing")); return; }
-    var D = window.DocxLib;
-    var orig = c.renewedFrom ? STATE.contracts.find(function (x) { return x.id === c.renewedFrom; }) : null;
+  function downloadBlob(blob, filename) {
+    var url = URL.createObjectURL(blob);
+    var a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  }
 
+  // Builds a ready-to-review draft agreement entirely from Docket's stored
+  // fields. Used whenever there's no original file to clone (a fresh
+  // contract) or the original isn't a .docx we can safely rewrite in place
+  // (PDF/scanned originals have no editable text layer to preserve). Every
+  // clause section is always shown, with a bracketed placeholder when
+  // Docket has no text for it, so the document reads as a complete contract
+  // skeleton rather than silently dropping sections with no data.
+  function buildFallbackAgreementDoc(c, orig) {
+    var D = window.DocxLib;
     function p(text, opts) {
       opts = opts || {};
       return new D.Paragraph({ spacing: { after: 160 }, children: [new D.TextRun(Object.assign({ text: text }, opts))] });
@@ -337,6 +355,11 @@
         new D.TextRun({ text: label + ": ", bold: true }),
         new D.TextRun({ text: (value == null || value === "") ? "—" : String(value) })
       ] });
+    }
+    function placeholderStyle(hasText) { return hasText ? {} : { italics: true, color: "888888" }; }
+    function clause(number, title, text) {
+      var hasText = !!(text && String(text).trim());
+      return [h(number + ". " + title), p(hasText ? text : "[Not specified in Docket - insert before use.]", placeholderStyle(hasText))];
     }
     function sigBlock(partyLabel, name, designation) {
       return [
@@ -361,50 +384,155 @@
       ]
     }));
 
-    children.push(p("This Agreement is made between " + (c.entity || "___________________") + " (\"the Company\") and " +
+    children.push(h("Recitals"));
+    children.push(p("WHEREAS " + (c.entity || "the Company") + " and " + (c.counterparty || "the Counterparty") +
+      (orig ? " previously entered into the agreement referenced " + orig.id + (orig.title ? " (\"" + orig.title + "\")" : "") +
+        (orig.expiryDate ? ", which expired on " + fmtDateLong(orig.expiryDate) : "") + ", and now wish to renew that arrangement on the terms below" :
+        " wish to enter into this Agreement on the terms below") + ";"));
+    children.push(p("NOW THEREFORE, in consideration of the mutual covenants contained herein, the parties agree as follows:"));
+
+    children.push(h("1. Parties"));
+    children.push(p((c.entity || "___________________") + " (\"the Company\") and " +
       (c.counterparty || "___________________") + (tx(c.counterpartyType) ? " (" + tx(c.counterpartyType) + ")" : "") + " (\"the Counterparty\")" +
       (c.counterpartyContact ? ", represented by " + c.counterpartyContact + (c.counterpartyDesignation ? " (" + c.counterpartyDesignation + ")" : "") : "") + "."));
 
-    if (orig) {
-      children.push(p("This Agreement renews and supersedes the prior agreement " + orig.id +
-        (orig.title ? " (\"" + orig.title + "\")" : "") +
-        (orig.expiryDate ? ", which expired on " + fmtDateLong(orig.expiryDate) : "") + "."));
-    }
-
-    children.push(h("1. Key Terms"));
-    children.push(labelValue("Title / Reference", c.title));
-    children.push(labelValue("Contract Type", tx(c.contractType)));
+    children.push(h("2. Term"));
     children.push(labelValue("Start Date", fmtDateLong(c.startDate)));
     children.push(labelValue("Expiry Date", fmtDateLong(c.expiryDate)));
     if (c.termValue) children.push(labelValue("Term", c.termValue + " " + (tx(c.termUnit) || "")));
-    children.push(labelValue("Contract Value", fmtMoney(c.value, c.currency)));
-    if (c.paymentTerms) children.push(labelValue("Payment Terms", c.paymentTerms));
-    if (c.governingLaw) children.push(labelValue("Governing Law", c.governingLaw));
     children.push(labelValue("Auto-Renewal", tx(c.autoRenewal)));
     if (c.noticeDays) children.push(labelValue("Notice Period", c.noticeDays + " days"));
 
-    if (c.obligations) { children.push(h("2. Obligations")); children.push(p(c.obligations)); }
-    if (c.terminationClause) { children.push(h("3. Termination")); children.push(p(c.terminationClause)); }
-    if (c.liabilityNotes) { children.push(h("4. Liability")); children.push(p(c.liabilityNotes)); }
+    children.push(h("3. Payment Terms & Value"));
+    children.push(labelValue("Contract Value", fmtMoney(c.value, c.currency)));
+    children.push(p(c.paymentTerms && String(c.paymentTerms).trim() ? "Payment shall be made in accordance with the following terms: " + c.paymentTerms + "." : "[Payment terms not specified in Docket - insert before use.]", placeholderStyle(c.paymentTerms)));
+
+    children = children.concat(clause("4", "Obligations", c.obligations));
+    children = children.concat(clause("5", "Termination", c.terminationClause));
+    children = children.concat(clause("6", "Liability", c.liabilityNotes));
+
+    children.push(h("7. Governing Law"));
+    children.push(p(c.governingLaw && String(c.governingLaw).trim() ? "This Agreement shall be governed by and construed in accordance with the laws of " + c.governingLaw + "." : "[Governing law not specified in Docket - insert before use.]", placeholderStyle(c.governingLaw)));
+
+    children.push(h("8. Confidentiality"));
+    children.push(p(c.confidentiality && c.confidentiality !== "Public" ?
+      "The parties shall treat the terms of this Agreement, and any information exchanged under it, as " + String(tx(c.confidentiality)).toLowerCase() + " and shall not disclose it to third parties without prior written consent, except as required by law." :
+      "No special confidentiality obligations are recorded for this Agreement in Docket."));
+
+    if (c.notes && String(c.notes).trim()) { children.push(h("Notes")); children.push(p(c.notes)); }
 
     children.push(h("Signatures"));
     children = children.concat(sigBlock(c.entity || "the Company", "", ""));
     children = children.concat(sigBlock(c.counterparty || "the Counterparty", c.counterpartyContact, c.counterpartyDesignation));
 
-    var doc = new D.Document({ sections: [{ children: children }] });
-    D.Packer.toBlob(doc).then(function (blob) {
-      var url = URL.createObjectURL(blob);
-      var a = document.createElement("a");
-      a.href = url;
-      a.download = c.id + "-agreement-draft.docx";
-      document.body.appendChild(a);
-      a.click();
-      a.remove();
-      URL.revokeObjectURL(url);
-      showToast(t("toast_docx_generated"));
-    }).catch(function () {
-      showToast(t("toast_docx_error"));
+    return new D.Document({ sections: [{ children: children }] });
+  }
+
+  function escapeXml(s) {
+    return String(s).replace(/[&<>]/g, function (c) { return { "&": "&amp;", "<": "&lt;", ">": "&gt;" }[c]; });
+  }
+
+  // Rewrites only the paragraphs that literally contain one of the old
+  // values being replaced, collapsing that ONE paragraph down to a single
+  // run (so any bold/italic split *within* it is lost) while leaving every
+  // other paragraph in the document byte-identical - a deliberate trade-off
+  // to keep the rest of the original's clauses, headings, and formatting
+  // completely untouched.
+  function patchDocxParagraphs(xml, replacements) {
+    var count = 0;
+    var patchedXml = xml.replace(/<w:p\b[^>]*>[\s\S]*?<\/w:p>/g, function (pXml) {
+      var text = (pXml.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || []).map(function (r) { return r.replace(/<[^>]+>/g, ""); }).join("");
+      var newText = text, changed = false;
+      replacements.forEach(function (r) {
+        if (r.oldRaw && newText.indexOf(r.oldRaw) !== -1) { newText = newText.split(r.oldRaw).join(r.newRaw); changed = true; }
+      });
+      if (!changed) return pXml;
+      count++;
+      var openTagMatch = pXml.match(/^<w:p\b[^>]*>/);
+      var openTag = openTagMatch ? openTagMatch[0] : "<w:p>";
+      var pPrMatch = pXml.match(/<w:pPr>[\s\S]*?<\/w:pPr>/);
+      var pPr = pPrMatch ? pPrMatch[0] : "";
+      var firstRunMatch = pXml.match(/<w:r\b[^>]*>[\s\S]*?<\/w:r>/);
+      var rPrMatch = firstRunMatch ? firstRunMatch[0].match(/<w:rPr>[\s\S]*?<\/w:rPr>/) : null;
+      var rPr = rPrMatch ? rPrMatch[0] : "";
+      return openTag + pPr + "<w:r>" + rPr + '<w:t xml:space="preserve">' + escapeXml(newText) + "</w:t></w:r></w:p>";
     });
+    return { xml: patchedXml, count: count };
+  }
+
+  // Clones the ORIGINAL contract's actual uploaded .docx and only swaps the
+  // literal text of whichever core values (start/expiry date, contract
+  // value) changed for the renewal - everything else in the file, every
+  // clause and heading and layout choice, is untouched. Resolves null when
+  // this isn't possible (no file, not a .docx, can't fetch/parse it, or
+  // couldn't confidently locate the old dates in the text), which tells the
+  // caller to fall back to the generated template instead.
+  function buildRenewalDocxFromOriginal(orig, c) {
+    var name = orig.fileName || orig.fileUrl || "";
+    if (!orig.fileUrl || !/\.docx($|[?#])/i.test(name) || !window.JSZip || !window.DocketExtract) return Promise.resolve(null);
+    return fetch(orig.fileUrl).then(function (res) {
+      if (!res.ok) throw new Error("fetch failed");
+      return res.arrayBuffer();
+    }).then(function (buf) {
+      return window.JSZip.loadAsync(buf);
+    }).then(function (zip) {
+      var docXmlFile = zip.file("word/document.xml");
+      if (!docXmlFile) throw new Error("not a valid docx");
+      return docXmlFile.async("string").then(function (xml) {
+        var origText = window.DocketExtract.docxXmlToPlainText(xml);
+        var dates = window.DocketExtract.findAllDates(origText);
+        var oldStartRaw = orig.startDate ? (dates.find(function (d) { return d.iso === orig.startDate; }) || {}).raw : null;
+        var oldExpiryRaw = orig.expiryDate ? (dates.find(function (d) { return d.iso === orig.expiryDate; }) || {}).raw : null;
+        if (oldExpiryRaw && oldExpiryRaw === oldStartRaw) oldExpiryRaw = null; // avoid double-mapping one raw string to two targets
+        var money = window.DocketExtract.findMoney(origText);
+        var oldValueRaw = (money && orig.value != null && Math.abs(money.value - Number(orig.value)) < 1) ? money.raw : null;
+
+        if (!oldStartRaw && !oldExpiryRaw) return null; // can't confidently update the dates - don't ship stale ones
+
+        var replacements = [];
+        if (oldStartRaw && c.startDate) replacements.push({ oldRaw: oldStartRaw, newRaw: fmtDateLong(c.startDate) });
+        if (oldExpiryRaw && c.expiryDate) replacements.push({ oldRaw: oldExpiryRaw, newRaw: fmtDateLong(c.expiryDate) });
+        if (oldValueRaw && c.value != null) replacements.push({ oldRaw: oldValueRaw, newRaw: (c.currency || orig.currency || "") + " " + Number(c.value).toLocaleString("en-SG") });
+
+        var patched = patchDocxParagraphs(xml, replacements);
+        zip.file("word/document.xml", patched.xml);
+        return zip.generateAsync({ type: "blob", mimeType: "application/vnd.openxmlformats-officedocument.wordprocessingml.document" })
+          .then(function (blob) { return { blob: blob, replaced: patched.count, attempted: replacements.length }; });
+      });
+    }).catch(function () { return null; });
+  }
+
+  // Renewals try to clone the original's real .docx first (same layout,
+  // only the core dates/value swapped); everything else - fresh contracts,
+  // or a renewal whose original was a PDF/scan/unreachable file - falls
+  // back to the generated template. The DRAFT banner only appears in the
+  // generated template: a cloned original is left exactly as it was, so
+  // nothing is injected into a real signed-document layout.
+  function generateAgreementDocx(id) {
+    var c = STATE.contracts.find(function (x) { return x.id === id; });
+    if (!c) return;
+    if (!window.DocxLib) { showToast(t("toast_docx_lib_missing")); return; }
+    var orig = c.renewedFrom ? STATE.contracts.find(function (x) { return x.id === c.renewedFrom; }) : null;
+
+    function fallback(toastKey) {
+      window.DocxLib.Packer.toBlob(buildFallbackAgreementDoc(c, orig)).then(function (blob) {
+        downloadBlob(blob, c.id + "-agreement-draft.docx");
+        showToast(t(toastKey || "toast_docx_generated"));
+      }).catch(function () { showToast(t("toast_docx_error")); });
+    }
+
+    if (orig) {
+      buildRenewalDocxFromOriginal(orig, c).then(function (result) {
+        if (result && result.blob) {
+          downloadBlob(result.blob, c.id + "-renewal.docx");
+          showToast(t("toast_docx_from_original"));
+        } else {
+          fallback("toast_docx_layout_unavailable");
+        }
+      });
+    } else {
+      fallback();
+    }
   }
 
   function importData(file) {
@@ -535,7 +663,10 @@
 
     var withDays = cs.map(function (c, i) { return { c: c, a: alerts[i] }; })
       .filter(function (x) { return x.a.days !== null; })
-      .sort(function (x, y) { return compareByAlert(x.a, y.a); })
+      .sort(function (x, y) {
+        var byAlert = compareByAlert(x.a, y.a);
+        return byAlert !== 0 ? byAlert : contractSeq(y.c) - contractSeq(x.c);
+      })
       .slice(0, 8);
 
     var byCurrency = {};
@@ -702,7 +833,8 @@
     }
 
     var rows = cs.map(function (c) { return { c: c, a: computeAlert(c) }; }).sort(function (x, y) {
-      return compareByAlert(x.a, y.a);
+      var byAlert = compareByAlert(x.a, y.a);
+      return byAlert !== 0 ? byAlert : contractSeq(y.c) - contractSeq(x.c);
     });
 
     var isEmptyRegister = STATE.contracts.length === 0;

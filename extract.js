@@ -133,7 +133,7 @@
       if (!currency || !raw) continue;
       var value = Number(raw.replace(/,/g, ""));
       if (isNaN(value) || value <= 0) continue;
-      if (!best || value > best.value) best = { value: value, currency: currency };
+      if (!best || value > best.value) best = { value: value, currency: currency, raw: m[0] };
     }
     return best;
   }
@@ -422,6 +422,17 @@
     });
   }
 
+  // Shared with the renewal docx-cloning path in app.js, which needs the same
+  // paragraph-text view of a document.xml to locate where a value it's about
+  // to replace actually sits in the file.
+  function docxXmlToPlainText(xml) {
+    var paragraphs = xml.split(/<w:p[ >]/).slice(1);
+    return paragraphs.map(function (p) {
+      var runs = p.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [];
+      return runs.map(function (r) { return r.replace(/<[^>]+>/g, ""); }).join("");
+    }).join("\n");
+  }
+
   function extractDocxText(file) {
     if (!global.JSZip) return Promise.reject(new Error("DOCX reader did not load — check your connection and try again."));
     return file.arrayBuffer().then(function (buf) {
@@ -431,11 +442,7 @@
       if (!docXml) throw new Error("This doesn't look like a valid .docx file.");
       return docXml.async("string");
     }).then(function (xml) {
-      var paragraphs = xml.split(/<w:p[ >]/).slice(1);
-      return { text: paragraphs.map(function (p) {
-        var runs = p.match(/<w:t[^>]*>([^<]*)<\/w:t>/g) || [];
-        return runs.map(function (r) { return r.replace(/<[^>]+>/g, ""); }).join("");
-      }).join("\n"), images: [] };
+      return { text: docxXmlToPlainText(xml), images: [] };
     });
   }
 
@@ -454,6 +461,12 @@
 
   global.DocketExtract = {
     extractText: extractText,
-    guessFields: guessFields
+    guessFields: guessFields,
+    // Lower-level pieces reused by app.js's renewal-docx cloning: it needs to
+    // find the exact raw text of a specific old date/value inside an
+    // already-fetched original .docx, not just get a best-effort field guess.
+    findAllDates: findAllDates,
+    findMoney: findMoney,
+    docxXmlToPlainText: docxXmlToPlainText
   };
 })(window);
