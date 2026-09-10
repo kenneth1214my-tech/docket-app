@@ -100,7 +100,14 @@ module.exports = async (req, res) => {
     if (settingsChanged) await redis.set(STATE_KEY, state);
 
     var settings = state.settings;
-    var email = settings.notificationEmail;
+    // ?test=<email> overrides the recipient for a one-off manual check (still
+    // gated by the same CRON_SECRET bearer check above, not publicly
+    // reachable) - real recipient/lead-time settings are untouched, and
+    // expiryAlertSentFor is deliberately NOT updated on a test run, so it
+    // doesn't consume the "already notified" flag before the real recipient
+    // ever sees it.
+    var isTest = !!(req.query && req.query.test);
+    var email = isTest ? req.query.test : settings.notificationEmail;
     if (!email) {
       res.status(200).json({ sent: 0, reason: "No notification email configured." });
       return;
@@ -112,7 +119,7 @@ module.exports = async (req, res) => {
       return c.expiryDate
         && CLOSED_STATUSES.indexOf(c.status) === -1
         && c.expiryDate <= threshold
-        && c.expiryAlertSentFor !== c.expiryDate;
+        && (isTest || c.expiryAlertSentFor !== c.expiryDate);
     });
 
     if (!qualifying.length) {
@@ -123,6 +130,11 @@ module.exports = async (req, res) => {
     var recipients = String(email).split(",").map(function (e) { return e.trim(); }).filter(Boolean);
     var html = buildEmailHtml(qualifying, leadMonths);
     await sendEmail(recipients, html, qualifying.length);
+
+    if (isTest) {
+      res.status(200).json({ sent: qualifying.length, test: true, to: recipients });
+      return;
+    }
 
     var qualifyingIds = {};
     qualifying.forEach(function (c) { qualifyingIds[c.id] = c.expiryDate; });
