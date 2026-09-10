@@ -221,6 +221,39 @@
     return !!(c.renewedTo && STATE.contracts.some(function (x) { return x.id === c.renewedTo; }));
   }
 
+  // ---------- invoices & payments (receivables / payables) ----------
+  var INVOICE_DIRECTIONS = ["Receivable", "Payable"];
+  var INVOICE_STATUSES = ["Unpaid", "Partially Paid", "Paid", "Bad Debt"];
+  var PAYMENT_DIRECTIONS = ["In", "Out"];
+  var PAYMENT_STATUSES = ["Planned", "Completed"];
+
+  function nextSubId(list, prefix) {
+    var max = 0;
+    (list || []).forEach(function (x) {
+      var m = new RegExp("^" + prefix + "-(\\d+)$").exec(x.id || "");
+      if (m) max = Math.max(max, Number(m[1]));
+    });
+    return prefix + "-" + (max + 1);
+  }
+
+  // Sum of completed payments linked to this invoice - what's actually been
+  // collected/paid against it, regardless of what the invoice's own status
+  // field says (that field is a manual/derived label, this is the ledger).
+  function paidAmountForInvoice(c, invoiceId) {
+    return (c.payments || []).filter(function (p) { return p.invoiceId === invoiceId && p.status === "Completed"; })
+      .reduce(function (sum, p) { return sum + (Number(p.actualAmount) || 0); }, 0);
+  }
+  // Bad Debt is a write-off, not a collectible balance - excluded from
+  // outstanding totals on purpose, same treatment as Expired/Renewed
+  // contracts are excluded from the urgency alerts.
+  function invoiceOutstanding(c, inv) {
+    if (inv.status === "Bad Debt") return 0;
+    return Math.max(0, (Number(inv.amount) || 0) - paidAmountForInvoice(c, inv.id));
+  }
+  function invoiceIsOverdue(inv, outstanding) {
+    return !!(inv.dueDate && inv.dueDate < addDays(0) && outstanding > 0);
+  }
+
   function nextContractId(contracts, year) {
     var y = year || new Date().getFullYear();
     var max = 0;
@@ -725,7 +758,7 @@
       renderTopStrip() +
       '<div class="shell">' +
         renderSidebar() +
-        '<main class="main">' + (UI.view === "dashboard" ? renderDashboard() : renderRegister()) + "</main>" +
+        '<main class="main">' + (UI.view === "dashboard" ? renderDashboard() : UI.view === "accounts" ? renderAccounts() : renderRegister()) + "</main>" +
       "</div>" +
       (UI.modal ? renderModal() : "") +
       '<div id="toast-wrap" class="toast-wrap" role="status" aria-live="polite"></div>' +
@@ -746,6 +779,7 @@
 
   function navIcon(name) {
     if (name === "dashboard") return '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><rect x="2.5" y="2.5" width="6.5" height="6.5" rx="1.3"/><rect x="11" y="2.5" width="6.5" height="4" rx="1.3"/><rect x="11" y="8.5" width="6.5" height="9" rx="1.3"/><rect x="2.5" y="11" width="6.5" height="6.5" rx="1.3"/></svg>';
+    if (name === "accounts") return '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7.2"/><path d="M10 5.5v9M7.2 13.2c0 1 .9 1.8 2.8 1.8s2.8-.8 2.8-1.9c0-2.6-5.6-1.1-5.6-3.7 0-1.1 1-1.9 2.8-1.9s2.8.8 2.8 1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>';
     return '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 2.5h7l3 3v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-14a1 1 0 0 1 1-1z"/><path d="M12 2.5v3h3"/><path d="M6.5 10h7M6.5 13h7M6.5 7h3"/></svg>';
   }
 
@@ -768,6 +802,7 @@
         '<nav class="nav">' +
           '<button class="nav-item' + (UI.view === "dashboard" ? " active" : "") + '" data-nav="dashboard">' + navIcon("dashboard") + esc(t("nav_dashboard")) + "</button>" +
           '<button class="nav-item' + (UI.view === "register" ? " active" : "") + '" data-nav="register">' + navIcon("register") + esc(t("nav_contracts")) + "</button>" +
+          '<button class="nav-item' + (UI.view === "accounts" ? " active" : "") + '" data-nav="accounts">' + navIcon("accounts") + esc(t("nav_accounts")) + "</button>" +
         "</nav>" +
         '<div class="sidebar-foot">' +
           "<div><strong>" + esc(t("sidebar_data_title")) + "</strong><br>" + esc(t("sidebar_data_body")) + "</div>" +
@@ -805,6 +840,12 @@
     return '<button type="button" class="kpi' + (tone ? " tone-" + tone : "") + '"' + filterDataAttrs(filterOpts) + '><div class="label-row"><div class="label">' + esc(label) + "</div>" +
       (iconKey ? '<span class="kpi-icon">' + KPI_ICONS[iconKey] + "</span>" : "") +
       '</div><div class="value">' + value + "</div></button>";
+  }
+  // Non-interactive twin of kpi() - the Accounts page's tiles are amount
+  // totals, not a filter shortcut into anything, so they shouldn't look
+  // clickable or wire up a "goto-register" action that wouldn't make sense.
+  function staticKpi(label, value, tone) {
+    return '<div class="kpi' + (tone ? " tone-" + tone : "") + '"><div class="label-row"><div class="label">' + esc(label) + "</div></div><div class=\"value\">" + value + "</div></div>";
   }
 
   function renderDashboard() {
@@ -1042,6 +1083,86 @@
     );
   }
 
+  // Flattens every contract's invoices into one list, each row carrying its
+  // parent contract for display/navigation and its computed outstanding/
+  // overdue state - the single source both the KPI totals and the two
+  // tables below are built from, so they can never disagree with each other.
+  function allInvoiceRows() {
+    var rows = [];
+    STATE.contracts.forEach(function (c) {
+      (c.invoices || []).forEach(function (inv) {
+        rows.push({ c: c, inv: inv, outstanding: invoiceOutstanding(c, inv) });
+      });
+    });
+    rows.forEach(function (r) { r.overdue = invoiceIsOverdue(r.inv, r.outstanding); });
+    return rows;
+  }
+
+  function addToCurrencyBucket(bucket, currency, amount) {
+    if (!amount) return;
+    var k = currency || "—";
+    bucket[k] = (bucket[k] || 0) + amount;
+  }
+  function fmtCurrencyBucket(bucket) {
+    var keys = Object.keys(bucket);
+    if (!keys.length) return fmtMoney(0, "");
+    return keys.map(function (k) { return fmtMoney(bucket[k], k); }).join(", ");
+  }
+
+  function renderAccountsTable(rows, emptyKey) {
+    if (!rows.length) return '<div class="empty-state" style="padding:24px"><p>' + esc(t(emptyKey)) + "</p></div>";
+    return '<div class="table-wrap"><table><thead><tr>' +
+      "<th>" + esc(t("col_contract")) + "</th><th>" + esc(t("col_counterparty")) + "</th><th>" + esc(t("acc_col_invoice")) + "</th>" +
+      "<th>" + esc(t("f_invoice_due_date")) + '</th><th>' + esc(t("f_invoice_status")) + '</th><th class="num">' + esc(t("f_invoice_amount")) + '</th><th class="num">' + esc(t("acc_outstanding_label")) + "</th>" +
+      "</tr></thead><tbody>" +
+      rows.map(function (r) {
+        return '<tr class="clickable-row" role="button" tabindex="0" data-action="edit" data-id="' + esc(r.c.id) + '">' +
+          "<td><div class=\"cell-title\">" + esc(r.c.title) + '</div><div class="cell-sub mono">' + esc(r.c.id) + "</div></td>" +
+          "<td>" + esc(r.c.counterparty) + "</td>" +
+          "<td>" + esc(r.inv.invoiceNumber || r.inv.id) + "</td>" +
+          '<td class="mono">' + fmtDate(r.inv.dueDate) + "</td>" +
+          '<td><span class="pill status-' + slugClass(r.inv.status) + '">' + esc(tx(r.inv.status)) + "</span>" + (r.overdue ? ' <span class="pill alert-overdue">' + esc(t("acc_overdue_tag")) + "</span>" : "") + "</td>" +
+          '<td class="num">' + fmtMoney(r.inv.amount, r.inv.currency) + "</td>" +
+          '<td class="num">' + fmtMoney(r.outstanding, r.inv.currency) + "</td>" +
+        "</tr>";
+      }).join("") + "</tbody></table></div>";
+  }
+
+  function renderAccounts() {
+    var rows = allInvoiceRows();
+    if (!rows.length) {
+      return '<div class="topbar"><div><h1>' + esc(t("nav_accounts")) + "</h1><div class=\"sub\">" + esc(t("acc_sub")) + "</div></div></div>" +
+        '<div class="panel"><div class="empty-state">' + emptyIllustration() + "<h3>" + esc(t("acc_empty_title")) + "</h3><p>" + esc(t("acc_empty_body")) + "</p></div></div>";
+    }
+
+    var receivable = rows.filter(function (r) { return r.inv.direction === "Receivable"; });
+    var payable = rows.filter(function (r) { return r.inv.direction === "Payable"; });
+
+    var arOutstanding = {}, apOutstanding = {}, arOverdue = {}, apOverdue = {}, badDebt = {};
+    receivable.forEach(function (r) {
+      addToCurrencyBucket(arOutstanding, r.inv.currency, r.outstanding);
+      if (r.overdue) addToCurrencyBucket(arOverdue, r.inv.currency, r.outstanding);
+      if (r.inv.status === "Bad Debt") addToCurrencyBucket(badDebt, r.inv.currency, Number(r.inv.amount) || 0);
+    });
+    payable.forEach(function (r) {
+      addToCurrencyBucket(apOutstanding, r.inv.currency, r.outstanding);
+      if (r.overdue) addToCurrencyBucket(apOverdue, r.inv.currency, r.outstanding);
+    });
+
+    return (
+      '<div class="topbar"><div><h1>' + esc(t("nav_accounts")) + "</h1><div class=\"sub\">" + esc(t("acc_sub")) + "</div></div></div>" +
+      '<div class="kpi-grid">' +
+        staticKpi(t("acc_kpi_ar_outstanding"), fmtCurrencyBucket(arOutstanding), null) +
+        staticKpi(t("acc_kpi_ap_outstanding"), fmtCurrencyBucket(apOutstanding), null) +
+        staticKpi(t("acc_kpi_ar_overdue"), fmtCurrencyBucket(arOverdue), Object.keys(arOverdue).length ? "danger" : null) +
+        staticKpi(t("acc_kpi_ap_overdue"), fmtCurrencyBucket(apOverdue), Object.keys(apOverdue).length ? "danger" : null) +
+        staticKpi(t("acc_kpi_bad_debt"), fmtCurrencyBucket(badDebt), Object.keys(badDebt).length ? "danger" : null) +
+      "</div>" +
+      '<div class="panel"><div class="panel-head"><h2>' + esc(t("acc_receivables_title")) + "</h2></div>" + renderAccountsTable(receivable, "acc_no_receivables") + "</div>" +
+      '<div class="panel"><div class="panel-head"><h2>' + esc(t("acc_payables_title")) + "</h2></div>" + renderAccountsTable(payable, "acc_no_payables") + "</div>"
+    );
+  }
+
   function selectChip(id, options, current, allLabel) {
     return '<select class="chip-select" id="' + id + '">' + options.map(function (o) {
       var label = o === "all" ? allLabel : tx(o);
@@ -1086,6 +1207,8 @@
     if (UI.modal.mode === "admin-settings") return renderAdminSettingsModal();
     if (UI.modal.mode === "ai-settings") return renderAiSettingsModal();
     if (UI.modal.mode === "add-addendum") return renderAddAddendumModal();
+    if (UI.modal.mode === "add-invoice") return renderAddInvoiceModal();
+    if (UI.modal.mode === "add-payment") return renderAddPaymentModal();
     if (UI.modal.mode === "change-password") return renderChangePasswordModal();
     return renderFormModal();
   }
@@ -1293,6 +1416,110 @@
     );
   }
 
+  function renderInvoicesSection(c) {
+    var list = c.invoices || [];
+    var rows = list.map(function (inv, idx) {
+      var outstanding = invoiceOutstanding(c, inv);
+      var overdue = invoiceIsOverdue(inv, outstanding);
+      return '<div class="addendum-row">' +
+        '<div class="addendum-main">' +
+          '<div class="addendum-title-line"><strong>' + esc(inv.invoiceNumber || inv.id) + '</strong>' +
+            '<span class="pill status-' + slugClass(inv.status) + '">' + esc(tx(inv.status)) + "</span>" +
+            (overdue ? '<span class="pill alert-overdue">' + esc(t("acc_overdue_tag")) + "</span>" : "") +
+          "</div>" +
+          '<div class="addendum-notes">' + esc(tx(inv.direction)) + " · " + fmtMoney(inv.amount, inv.currency) +
+            " · " + esc(t("f_invoice_due_date")) + " " + fmtDate(inv.dueDate) +
+            " · " + esc(t("acc_outstanding_label")) + " " + fmtMoney(outstanding, inv.currency) + "</div>" +
+          (inv.notes ? '<div class="addendum-notes">' + esc(inv.notes) + "</div>" : "") +
+        "</div>" +
+        '<button type="button" class="icon-btn" data-action="remove-invoice" data-index="' + idx + '" aria-label="' + esc(t("delete")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h12M8 6V4h4v2m-7 0 1 11h8l1-11"/></svg></button>' +
+      "</div>";
+    }).join("");
+    return '<div class="fieldset-title">' + esc(t("fs_invoices")) + "</div>" +
+      '<div class="addendum-list">' + (rows || '<div class="addendum-empty">' + esc(t("invoices_empty")) + "</div>") + "</div>" +
+      '<button type="button" class="btn btn-ghost btn-sm" data-action="add-invoice" data-id="' + esc(c.id) + '">' + esc(t("add_invoice_btn")) + "</button>";
+  }
+
+  function renderAddInvoiceModal() {
+    var m = UI.modal;
+    return (
+      '<div class="modal-overlay" data-overlay>' +
+        '<div class="modal">' +
+          '<div class="modal-head"><h2>' + esc(t("invoice_modal_title")) + "</h2><button class=\"icon-btn\" data-action=\"close-modal\" aria-label=\"" + esc(t("cancel")) + "\"><svg viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><path d=\"M5 5l10 10M15 5L5 15\"/></svg></button></div>" +
+          '<div class="modal-body">' +
+            '<div class="field-grid">' +
+              fieldInput("invoiceNumber", t("f_invoice_number"), m.invoiceNumber, "text", true) +
+              fieldSelect("direction", t("f_invoice_direction"), INVOICE_DIRECTIONS, m.direction || "Receivable", true) +
+              fieldInput("amount", t("f_invoice_amount"), m.amount, "number", true) +
+              fieldSelect("currency", t("f_currency"), TAXONOMY.currencies, m.currency) +
+              fieldInput("issueDate", t("f_invoice_issue_date"), m.issueDate, "date") +
+              fieldInput("dueDate", t("f_invoice_due_date"), m.dueDate, "date") +
+              fieldSelect("status", t("f_invoice_status"), INVOICE_STATUSES, m.status || "Unpaid", true) +
+            "</div>" +
+            '<div class="field full"><label>' + esc(t("f_notes")) + '</label><textarea id="invoice-notes-input" rows="2">' + esc(m.notes || "") + "</textarea></div>" +
+          "</div>" +
+          '<div class="modal-foot"><button type="button" class="btn btn-ghost" data-action="close-modal">' + esc(t("cancel")) + '</button><button type="button" class="btn btn-primary" data-action="save-invoice">' + esc(t("save_invoice_btn")) + "</button></div>" +
+        "</div>" +
+      "</div>"
+    );
+  }
+
+  function renderPaymentsSection(c) {
+    var list = c.payments || [];
+    var rows = list.map(function (p, idx) {
+      var linked = p.invoiceId ? (c.invoices || []).find(function (inv) { return inv.id === p.invoiceId; }) : null;
+      return '<div class="addendum-row">' +
+        '<div class="addendum-main">' +
+          '<div class="addendum-title-line"><strong>' + esc(tx(p.direction)) + " " + fmtMoney(p.status === "Completed" ? p.actualAmount : p.plannedAmount, p.currency) + '</strong>' +
+            '<span class="pill status-' + slugClass(p.status) + '">' + esc(tx(p.status)) + "</span>" +
+          "</div>" +
+          '<div class="addendum-notes">' +
+            esc(t("f_payment_planned_date")) + " " + fmtDate(p.plannedDate) +
+            (p.status === "Completed" ? " · " + esc(t("f_payment_actual_date")) + " " + fmtDate(p.actualDate) : "") +
+            (linked ? " · " + esc(t("f_payment_link_invoice")) + " " + esc(linked.invoiceNumber || linked.id) : "") +
+            (p.method ? " · " + esc(p.method) : "") +
+          "</div>" +
+          (p.notes ? '<div class="addendum-notes">' + esc(p.notes) + "</div>" : "") +
+        "</div>" +
+        '<button type="button" class="icon-btn" data-action="remove-payment" data-index="' + idx + '" aria-label="' + esc(t("delete")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h12M8 6V4h4v2m-7 0 1 11h8l1-11"/></svg></button>' +
+      "</div>";
+    }).join("");
+    return '<div class="fieldset-title">' + esc(t("fs_payments")) + "</div>" +
+      '<div class="addendum-list">' + (rows || '<div class="addendum-empty">' + esc(t("payments_empty")) + "</div>") + "</div>" +
+      '<button type="button" class="btn btn-ghost btn-sm" data-action="add-payment" data-id="' + esc(c.id) + '">' + esc(t("add_payment_btn")) + "</button>";
+  }
+
+  function renderAddPaymentModal() {
+    var m = UI.modal;
+    var contract = STATE.contracts.find(function (x) { return x.id === m.contractId; }) || {};
+    var invoiceOptions = (contract.invoices || []).map(function (inv) {
+      return '<option value="' + esc(inv.id) + '"' + (inv.id === m.invoiceId ? " selected" : "") + ">" + esc(inv.invoiceNumber || inv.id) + "</option>";
+    }).join("");
+    var completed = m.status === "Completed";
+    return (
+      '<div class="modal-overlay" data-overlay>' +
+        '<div class="modal">' +
+          '<div class="modal-head"><h2>' + esc(t("payment_modal_title")) + "</h2><button class=\"icon-btn\" data-action=\"close-modal\" aria-label=\"" + esc(t("cancel")) + "\"><svg viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><path d=\"M5 5l10 10M15 5L5 15\"/></svg></button></div>" +
+          '<div class="modal-body">' +
+            '<div class="field-grid">' +
+              fieldSelect("direction", t("f_payment_direction"), PAYMENT_DIRECTIONS, m.direction || "In", true) +
+              '<div class="field"><label>' + esc(t("f_payment_link_invoice")) + '</label><select id="payment-invoice-select"><option value="">—</option>' + invoiceOptions + "</select></div>" +
+              fieldInput("plannedDate", t("f_payment_planned_date"), m.plannedDate, "date", true) +
+              fieldInput("plannedAmount", t("f_payment_planned_amount"), m.plannedAmount, "number", true) +
+              fieldSelect("currency", t("f_currency"), TAXONOMY.currencies, m.currency) +
+              fieldSelect("status", t("f_payment_status"), PAYMENT_STATUSES, m.status || "Planned", true) +
+              fieldInput("actualDate", t("f_payment_actual_date"), m.actualDate, "date", completed) +
+              fieldInput("actualAmount", t("f_payment_actual_amount"), m.actualAmount != null ? m.actualAmount : m.plannedAmount, "number", completed) +
+              fieldInput("method", t("f_payment_method"), m.method, "text") +
+            "</div>" +
+            '<div class="field full"><label>' + esc(t("f_notes")) + '</label><textarea id="payment-notes-input" rows="2">' + esc(m.notes || "") + "</textarea></div>" +
+          "</div>" +
+          '<div class="modal-foot"><button type="button" class="btn btn-ghost" data-action="close-modal">' + esc(t("cancel")) + '</button><button type="button" class="btn btn-primary" data-action="save-payment">' + esc(t("save_payment_btn")) + "</button></div>" +
+        "</div>" +
+      "</div>"
+    );
+  }
+
   function renderFormModal() {
     var editing = UI.modal.mode === "edit";
     var c = editing ? STATE.contracts.find(function (x) { return x.id === UI.modal.id; }) : (UI.modal.draft || {});
@@ -1351,6 +1578,8 @@
             fieldInput("tags", t("f_tags"), c.tags, "text", false, true) +
             fieldTextarea("notes", t("f_notes"), c.notes) +
             (editing ? renderAddendumsSection(c) : "") +
+            (editing ? renderInvoicesSection(c) : "") +
+            (editing ? renderPaymentsSection(c) : "") +
           "</div>" +
           '<div class="modal-foot">' +
             (editing && !renewedToExists ? '<button type="button" class="btn btn-ghost" data-action="renew" data-id="' + esc(c.id) + '">' + esc(t("action_renew")) + "</button>" : "") +
@@ -1900,6 +2129,115 @@
         var next = JSON.parse(JSON.stringify(STATE));
         var contract = next.contracts.find(function (x) { return x.id === contractId; });
         if (contract && Array.isArray(contract.addendums)) contract.addendums.splice(idx, 1);
+        STATE = next;
+        saveState(STATE);
+        render();
+      });
+    });
+
+    var addInvoiceBtn = document.querySelector('[data-action="add-invoice"]');
+    if (addInvoiceBtn) addInvoiceBtn.addEventListener("click", function () {
+      var contractId = addInvoiceBtn.getAttribute("data-id");
+      var contract = STATE.contracts.find(function (x) { return x.id === contractId; });
+      UI.modal = {
+        mode: "add-invoice", contractId: contractId, returnTo: UI.modal,
+        invoiceNumber: "", direction: "Receivable", amount: "", currency: (contract && contract.currency) || "",
+        issueDate: "", dueDate: "", status: "Unpaid", notes: ""
+      };
+      render();
+    });
+    var saveInvoiceBtn = document.querySelector('[data-action="save-invoice"]');
+    if (saveInvoiceBtn) saveInvoiceBtn.addEventListener("click", function () {
+      var invoiceNumber = document.querySelector('[name="invoiceNumber"]').value.trim();
+      var amount = Number(document.querySelector('[name="amount"]').value);
+      if (!invoiceNumber || !amount) { showToast(t("toast_invoice_required")); return; }
+      var direction = document.querySelector('[name="direction"]').value;
+      var currency = document.querySelector('[name="currency"]').value;
+      var issueDate = document.querySelector('[name="issueDate"]').value;
+      var dueDate = document.querySelector('[name="dueDate"]').value;
+      var status = document.querySelector('[name="status"]').value;
+      var notes = document.getElementById("invoice-notes-input").value.trim();
+      var m = UI.modal;
+      var next = JSON.parse(JSON.stringify(STATE));
+      var contract = next.contracts.find(function (x) { return x.id === m.contractId; });
+      if (contract) {
+        if (!Array.isArray(contract.invoices)) contract.invoices = [];
+        contract.invoices.push({
+          id: nextSubId(contract.invoices, "INV"), invoiceNumber: invoiceNumber.toUpperCase(), direction: direction,
+          amount: amount, currency: currency || contract.currency || "", issueDate: issueDate, dueDate: dueDate,
+          status: status, notes: notes.toUpperCase()
+        });
+        STATE = next;
+        saveState(STATE);
+      }
+      UI.modal = m.returnTo || null;
+      render();
+      showToast(t("toast_invoice_added"));
+    });
+    document.querySelectorAll('[data-action="remove-invoice"]').forEach(function (el) {
+      el.addEventListener("click", function () {
+        var idx = Number(el.getAttribute("data-index"));
+        var contractId = UI.modal.id;
+        var next = JSON.parse(JSON.stringify(STATE));
+        var contract = next.contracts.find(function (x) { return x.id === contractId; });
+        if (contract && Array.isArray(contract.invoices)) contract.invoices.splice(idx, 1);
+        STATE = next;
+        saveState(STATE);
+        render();
+      });
+    });
+
+    var addPaymentBtn = document.querySelector('[data-action="add-payment"]');
+    if (addPaymentBtn) addPaymentBtn.addEventListener("click", function () {
+      var contractId = addPaymentBtn.getAttribute("data-id");
+      var contract = STATE.contracts.find(function (x) { return x.id === contractId; });
+      UI.modal = {
+        mode: "add-payment", contractId: contractId, returnTo: UI.modal,
+        direction: "In", invoiceId: "", plannedDate: "", plannedAmount: "", currency: (contract && contract.currency) || "",
+        status: "Planned", actualDate: "", actualAmount: "", method: "", notes: ""
+      };
+      render();
+    });
+    var savePaymentBtn = document.querySelector('[data-action="save-payment"]');
+    if (savePaymentBtn) savePaymentBtn.addEventListener("click", function () {
+      var plannedDate = document.querySelector('[name="plannedDate"]').value;
+      var plannedAmount = Number(document.querySelector('[name="plannedAmount"]').value);
+      if (!plannedDate || !plannedAmount) { showToast(t("toast_payment_required")); return; }
+      var status = document.querySelector('[name="status"]').value;
+      var actualDate = document.querySelector('[name="actualDate"]').value;
+      var actualAmountRaw = document.querySelector('[name="actualAmount"]').value;
+      if (status === "Completed" && (!actualDate || !actualAmountRaw)) { showToast(t("toast_payment_required")); return; }
+      var direction = document.querySelector('[name="direction"]').value;
+      var currency = document.querySelector('[name="currency"]').value;
+      var method = document.querySelector('[name="method"]').value.trim();
+      var notes = document.getElementById("payment-notes-input").value.trim();
+      var invoiceId = document.getElementById("payment-invoice-select").value || null;
+      var m = UI.modal;
+      var next = JSON.parse(JSON.stringify(STATE));
+      var contract = next.contracts.find(function (x) { return x.id === m.contractId; });
+      if (contract) {
+        if (!Array.isArray(contract.payments)) contract.payments = [];
+        contract.payments.push({
+          id: nextSubId(contract.payments, "PMT"), direction: direction, invoiceId: invoiceId,
+          plannedDate: plannedDate, plannedAmount: plannedAmount,
+          actualDate: status === "Completed" ? actualDate : null,
+          actualAmount: status === "Completed" ? Number(actualAmountRaw) : null,
+          status: status, currency: currency || contract.currency || "", method: method.toUpperCase(), notes: notes.toUpperCase()
+        });
+        STATE = next;
+        saveState(STATE);
+      }
+      UI.modal = m.returnTo || null;
+      render();
+      showToast(t("toast_payment_added"));
+    });
+    document.querySelectorAll('[data-action="remove-payment"]').forEach(function (el) {
+      el.addEventListener("click", function () {
+        var idx = Number(el.getAttribute("data-index"));
+        var contractId = UI.modal.id;
+        var next = JSON.parse(JSON.stringify(STATE));
+        var contract = next.contracts.find(function (x) { return x.id === contractId; });
+        if (contract && Array.isArray(contract.payments)) contract.payments.splice(idx, 1);
         STATE = next;
         saveState(STATE);
         render();
