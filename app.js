@@ -262,7 +262,9 @@
     if (successKey) showToast(ok ? t(successKey) : t("toast_session_only"));
   }
 
-  function mutateEntitiesState(mutateFn) {
+  // Generic "mutate the shared blob and save, no toast/modal-close" helper -
+  // originally written just for entities, now also used by Admin Settings.
+  function mutateSharedState(mutateFn) {
     var next = JSON.parse(JSON.stringify(STATE));
     mutateFn(next);
     STATE = next;
@@ -771,6 +773,7 @@
           "<div><strong>" + esc(t("sidebar_data_title")) + "</strong><br>" + esc(t("sidebar_data_body")) + "</div>" +
           '<div class="sidebar-actions">' +
             '<button class="link-btn" data-action="manage-entities">' + esc(t("manage_entities")) + "</button>" +
+            '<button class="link-btn" data-action="admin-settings">' + esc(t("admin_settings")) + "</button>" +
             '<button class="link-btn" data-action="ai-settings">' + esc(t("ai_settings")) + "</button>" +
             '<button class="link-btn" data-action="export">' + esc(t("export_data")) + "</button>" +
             '<button class="link-btn" data-action="export-excel">' + esc(t("export_excel")) + "</button>" +
@@ -1080,10 +1083,33 @@
     if (UI.modal.mode === "delete") return renderDeleteModal();
     if (UI.modal.mode === "clear-all") return renderClearAllModal();
     if (UI.modal.mode === "manage-entities") return renderEntitiesModal();
+    if (UI.modal.mode === "admin-settings") return renderAdminSettingsModal();
     if (UI.modal.mode === "ai-settings") return renderAiSettingsModal();
     if (UI.modal.mode === "add-addendum") return renderAddAddendumModal();
     if (UI.modal.mode === "change-password") return renderChangePasswordModal();
     return renderFormModal();
+  }
+
+  // Shared team-wide config, stored in STATE.settings alongside the
+  // contracts (same blob, same GET/PUT, same "everyone sees the same
+  // thing" model as entities) - the one place to change how the app
+  // behaves without needing a redeploy or an env var edit.
+  function renderAdminSettingsModal() {
+    var s = STATE.settings || {};
+    return (
+      '<div class="modal-overlay" data-overlay>' +
+        '<div class="modal">' +
+          '<div class="modal-head"><h2>' + esc(t("admin_settings_title")) + "</h2><button class=\"icon-btn\" data-action=\"close-modal\" aria-label=\"" + esc(t("cancel")) + "\"><svg viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><path d=\"M5 5l10 10M15 5L5 15\"/></svg></button></div>" +
+          '<div class="modal-body">' +
+            '<div class="fieldset-title">' + esc(t("admin_settings_notify_section")) + "</div>" +
+            '<div class="entities-hint">' + esc(t("admin_settings_notify_hint")) + "</div>" +
+            '<div class="field full"><label>' + esc(t("admin_settings_email_label")) + '</label><input type="text" id="admin-notify-email" placeholder="name@company.com" value="' + esc(s.notificationEmail || "") + '"></div>' +
+            '<div class="field"><label>' + esc(t("admin_settings_lead_label")) + '</label><input type="number" min="1" max="24" id="admin-notify-lead" value="' + esc(s.notificationLeadMonths != null ? s.notificationLeadMonths : 4) + '"></div>' +
+          "</div>" +
+          '<div class="modal-foot"><button type="button" class="btn btn-ghost" data-action="close-modal">' + esc(t("cancel")) + '</button><button type="button" class="btn btn-primary" data-action="admin-settings-save">' + esc(t("admin_settings_save")) + "</button></div>" +
+        "</div>" +
+      "</div>"
+    );
   }
 
   function renderChangePasswordModal() {
@@ -1779,6 +1805,26 @@
         render();
       });
     });
+    var adminSettingsBtn = document.querySelector('[data-action="admin-settings"]');
+    if (adminSettingsBtn) adminSettingsBtn.addEventListener("click", function () {
+      UI.modal = { mode: "admin-settings" };
+      render();
+    });
+    var adminSettingsSaveBtn = document.querySelector('[data-action="admin-settings-save"]');
+    if (adminSettingsSaveBtn) adminSettingsSaveBtn.addEventListener("click", function () {
+      var email = document.getElementById("admin-notify-email").value.trim();
+      var leadRaw = document.getElementById("admin-notify-lead").value;
+      var lead = Number(leadRaw);
+      if (!lead || lead < 1) lead = 4;
+      mutateSharedState(function (next) {
+        if (!next.settings || typeof next.settings !== "object") next.settings = {};
+        next.settings.notificationEmail = email;
+        next.settings.notificationLeadMonths = lead;
+      });
+      UI.modal = null;
+      render();
+      showToast(t("admin_settings_saved_toast"));
+    });
 
     var addAddendumBtn = document.querySelector('[data-action="add-addendum"]');
     if (addAddendumBtn) addAddendumBtn.addEventListener("click", function () {
@@ -1909,7 +1955,7 @@
       if (!name) { showToast(t("entities_empty_name")); return; }
       var exists = STATE.entities.some(function (e) { return e.toLowerCase() === name.toLowerCase(); });
       if (exists) { showToast(t("entities_duplicate")); return; }
-      mutateEntitiesState(function (next) { next.entities.push(name); });
+      mutateSharedState(function (next) { next.entities.push(name); });
     }
     var entityAddBtn = document.querySelector('[data-action="entity-add"]');
     if (entityAddBtn) entityAddBtn.addEventListener("click", doAddEntity);
@@ -1943,7 +1989,7 @@
           showToast('"' + name + '" ' + t("entities_delete_blocked") + " " + count + " " + t("entities_delete_blocked_suffix"));
           return;
         }
-        mutateEntitiesState(function (next) { next.entities.splice(idx, 1); });
+        mutateSharedState(function (next) { next.entities.splice(idx, 1); });
       });
     });
 
@@ -2149,6 +2195,11 @@
     }
     if (!Array.isArray(STATE.entities) || !STATE.entities.length) STATE.entities = DEFAULT_ENTITIES.slice();
     var anyChanged = false;
+    // Seeded once, on whichever browser boots first with no settings saved
+    // yet - after that this only ever comes from Admin Settings.
+    if (!STATE.settings || typeof STATE.settings !== "object") { STATE.settings = {}; anyChanged = true; }
+    if (STATE.settings.notificationEmail == null) { STATE.settings.notificationEmail = "kenneth_soo@kingston.edu.sg"; anyChanged = true; }
+    if (STATE.settings.notificationLeadMonths == null) { STATE.settings.notificationLeadMonths = 4; anyChanged = true; }
     STATE.contracts.forEach(function (c) { if (normalizeContractCase(c)) anyChanged = true; });
     if (migrating || anyChanged) saveState(STATE);
     render();
