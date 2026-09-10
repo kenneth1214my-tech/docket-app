@@ -89,7 +89,17 @@ module.exports = async (req, res) => {
       res.status(200).json({ sent: 0, reason: "No state yet." });
       return;
     }
-    var settings = state.settings || {};
+    // Same defaults the client seeds on boot (see finishBoot() in app.js) -
+    // duplicated here so this endpoint doesn't depend on someone having
+    // already opened the app in a browser first. Persisted back so Admin
+    // Settings shows the same values next time it's opened.
+    var settingsChanged = false;
+    if (!state.settings || typeof state.settings !== "object") { state.settings = {}; settingsChanged = true; }
+    if (state.settings.notificationEmail == null) { state.settings.notificationEmail = "kenneth_soo@kingston.edu.sg"; settingsChanged = true; }
+    if (state.settings.notificationLeadMonths == null) { state.settings.notificationLeadMonths = DEFAULT_LEAD_MONTHS; settingsChanged = true; }
+    if (settingsChanged) await redis.set(STATE_KEY, state);
+
+    var settings = state.settings;
     var email = settings.notificationEmail;
     if (!email) {
       res.status(200).json({ sent: 0, reason: "No notification email configured." });
