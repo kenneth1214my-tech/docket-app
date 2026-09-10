@@ -885,6 +885,7 @@
         kpi(t("kpi_overdue"), overdueOrExpired, "alert", overdueOrExpired > 0 ? "danger" : null, { alert: "overdue_or_expired" }) +
         kpi(t("kpi_critical"), criticalRisk, "shield", criticalRisk > 0 ? "danger" : null, { risk: "Critical" }) +
       "</div>" +
+      renderTodoPanel() +
       renderPortfolioPanel(cs) +
       '<div class="panel">' +
         '<div class="panel-head"><h2>' + esc(t("radar_title")) + '</h2><span class="hint">' + esc(t("radar_hint")) + "</span></div>" +
@@ -1098,6 +1099,69 @@
     return rows;
   }
 
+  // ---------- to-do center ----------
+  // One merged, ranked list across three different data types (contract
+  // expiry, invoice overdue, planned-payment overdue/imminent) - each has
+  // its own "how urgent" scale, so everything is normalized to a single
+  // signed day count (negative = already overdue, positive = days away)
+  // before ranking, the same convention computeAlert() already uses.
+  var TODO_SEVERITY_RANK = { overdue: 0, critical: 1, warning: 2, upcoming: 3 };
+  function daysFromToday(iso) {
+    return Math.round((new Date(iso + "T00:00:00") - todayMidnight()) / 86400000);
+  }
+  function buildTodoItems() {
+    var items = [];
+    STATE.contracts.forEach(function (c) {
+      var a = computeAlert(c);
+      if (a.key === "overdue" || a.key === "critical" || a.key === "warning") {
+        items.push({ severity: a.key === "overdue" ? "overdue" : a.key, sortDays: a.days, c: c,
+          label: c.title, sub: c.counterparty + " · " + a.label, icon: "contract" });
+      }
+      (c.invoices || []).forEach(function (inv) {
+        var outstanding = invoiceOutstanding(c, inv);
+        if (invoiceIsOverdue(inv, outstanding)) {
+          var d = daysFromToday(inv.dueDate);
+          items.push({ severity: "overdue", sortDays: d, c: c,
+            label: c.title + " · " + (inv.invoiceNumber || inv.id),
+            sub: tx(inv.direction) + " " + fmtMoney(outstanding, inv.currency) + " · " + t("todo_overdue_by") + " " + Math.abs(d) + "d",
+            icon: "invoice" });
+        }
+      });
+      (c.payments || []).forEach(function (p) {
+        if (p.status !== "Planned" || !p.plannedDate) return;
+        var d = daysFromToday(p.plannedDate);
+        if (d > 7) return; // not imminent yet - don't clutter the list with far-future planned payments
+        items.push({ severity: d < 0 ? "overdue" : "upcoming", sortDays: d, c: c,
+          label: c.title + " · " + t("todo_planned_payment"),
+          sub: tx(p.direction) + " " + fmtMoney(p.plannedAmount, p.currency) + " · " + (d < 0 ? t("todo_overdue_by") + " " + Math.abs(d) + "d" : t("todo_due_in") + " " + d + "d"),
+          icon: "payment" });
+      });
+    });
+    items.sort(function (x, y) {
+      var r = TODO_SEVERITY_RANK[x.severity] - TODO_SEVERITY_RANK[y.severity];
+      if (r !== 0) return r;
+      return x.severity === "overdue" ? (y.sortDays - x.sortDays) : (x.sortDays - y.sortDays);
+    });
+    return items;
+  }
+  var TODO_ICONS = {
+    contract: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 2.5h7l3 3v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-14a1 1 0 0 1 1-1z"/><path d="M12 2.5v3h3"/></svg>',
+    invoice: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7.2"/><path d="M10 5.5v9M7.2 13.2c0 1 .9 1.8 2.8 1.8s2.8-.8 2.8-1.9c0-2.6-5.6-1.1-5.6-3.7 0-1.1 1-1.9 2.8-1.9s2.8.8 2.8 1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+    payment: '<svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><circle cx="10" cy="10" r="7.2"/><path d="M10 6.2v4l2.8 1.8" stroke-linecap="round" stroke-linejoin="round"/></svg>'
+  };
+  function renderTodoPanel() {
+    var items = buildTodoItems();
+    var shown = items.slice(0, 10);
+    return '<div class="panel">' +
+      '<div class="panel-head"><h2>' + esc(t("todo_title")) + '</h2><span class="hint">' + esc(t("todo_hint")) + " " + items.length + "</span></div>" +
+      (shown.length ? '<ul class="top-list">' + shown.map(function (x) {
+        return '<li class="clickable" role="button" tabindex="0" data-action="edit" data-id="' + esc(x.c.id) + '"><span class="rank todo-icon">' + TODO_ICONS[x.icon] + "</span>" +
+          '<div class="info"><div class="t">' + esc(x.label) + '</div><div class="s">' + esc(x.sub) + "</div></div>" +
+          '<span class="pill alert-' + (x.severity === "upcoming" ? "watch" : x.severity) + '">' + esc(t("todo_sev_" + x.severity)) + "</span></li>";
+      }).join("") + "</ul>" : '<div class="empty-state" style="padding:24px"><p>' + esc(t("todo_empty")) + "</p></div>") +
+    "</div>";
+  }
+
   function addToCurrencyBucket(bucket, currency, amount) {
     if (!amount) return;
     var k = currency || "—";
@@ -1125,6 +1189,48 @@
           '<td class="num">' + fmtMoney(r.inv.amount, r.inv.currency) + "</td>" +
           '<td class="num">' + fmtMoney(r.outstanding, r.inv.currency) + "</td>" +
         "</tr>";
+      }).join("") + "</tbody></table></div>";
+  }
+
+  // Buckets outstanding balances by days-past-due, per currency - the
+  // standard "aging" view for deciding what to chase first. Only invoices
+  // with both a due date and a nonzero outstanding balance are bucketed
+  // (Bad Debt invoices already have zero outstanding, so they naturally
+  // never appear here - they're a write-off, not an aging concern).
+  var AGING_BUCKETS = ["current", "b1_30", "b31_60", "b61_90", "b90plus"];
+  function agingBucketFor(daysOverdue) {
+    if (daysOverdue <= 0) return "current";
+    if (daysOverdue <= 30) return "b1_30";
+    if (daysOverdue <= 60) return "b31_60";
+    if (daysOverdue <= 90) return "b61_90";
+    return "b90plus";
+  }
+  function buildAgingData(rows) {
+    var byCurrency = {};
+    rows.forEach(function (r) {
+      if (!r.inv.dueDate || r.outstanding <= 0) return;
+      var ccy = r.inv.currency || "—";
+      if (!byCurrency[ccy]) {
+        byCurrency[ccy] = { current: 0, b1_30: 0, b31_60: 0, b61_90: 0, b90plus: 0 };
+      }
+      var daysOverdue = -daysFromToday(r.inv.dueDate); // positive once the due date is in the past
+      byCurrency[ccy][agingBucketFor(daysOverdue)] += r.outstanding;
+    });
+    return byCurrency;
+  }
+  function renderAgingTable(rows, emptyKey) {
+    var data = buildAgingData(rows);
+    var currencies = Object.keys(data);
+    if (!currencies.length) return '<div class="empty-state" style="padding:16px"><p>' + esc(t(emptyKey)) + "</p></div>";
+    return '<div class="table-wrap"><table><thead><tr><th>' + esc(t("col_currency")) + "</th>" +
+      AGING_BUCKETS.map(function (b) { return "<th class=\"num\">" + esc(t("aging_" + b)) + "</th>"; }).join("") +
+      '<th class="num">' + esc(t("aging_total")) + "</th></tr></thead><tbody>" +
+      currencies.map(function (ccy) {
+        var row = data[ccy];
+        var total = AGING_BUCKETS.reduce(function (sum, b) { return sum + row[b]; }, 0);
+        return "<tr><td>" + esc(ccy) + "</td>" +
+          AGING_BUCKETS.map(function (b) { return '<td class="num">' + fmtMoney(row[b], ccy) + "</td>"; }).join("") +
+          '<td class="num"><strong>' + fmtMoney(total, ccy) + "</strong></td></tr>";
       }).join("") + "</tbody></table></div>";
   }
 
@@ -1157,6 +1263,10 @@
         staticKpi(t("acc_kpi_ar_overdue"), fmtCurrencyBucket(arOverdue), Object.keys(arOverdue).length ? "danger" : null) +
         staticKpi(t("acc_kpi_ap_overdue"), fmtCurrencyBucket(apOverdue), Object.keys(apOverdue).length ? "danger" : null) +
         staticKpi(t("acc_kpi_bad_debt"), fmtCurrencyBucket(badDebt), Object.keys(badDebt).length ? "danger" : null) +
+      "</div>" +
+      '<div class="panel"><div class="panel-head"><h2>' + esc(t("aging_title")) + '</h2><span class="hint">' + esc(t("aging_hint")) + "</span></div>" +
+        '<div class="bar-col-title">' + esc(t("acc_receivables_title")) + "</div>" + renderAgingTable(receivable, "acc_no_receivables") +
+        '<div class="bar-col-title" style="margin-top:16px">' + esc(t("acc_payables_title")) + "</div>" + renderAgingTable(payable, "acc_no_payables") +
       "</div>" +
       '<div class="panel"><div class="panel-head"><h2>' + esc(t("acc_receivables_title")) + "</h2></div>" + renderAccountsTable(receivable, "acc_no_receivables") + "</div>" +
       '<div class="panel"><div class="panel-head"><h2>' + esc(t("acc_payables_title")) + "</h2></div>" + renderAccountsTable(payable, "acc_no_payables") + "</div>"

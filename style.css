@@ -297,6 +297,8 @@ select.chip-select { padding: 7px 10px; font-size: 12.5px; }
   line-height: 1; padding: 0 2px; display: inline-flex; align-items: center;
 }
 .top-list .rank { font-family: var(--font-mono); color: var(--ink-faint); font-size: 12px; width: 16px; }
+.top-list .rank.todo-icon { display: inline-flex; flex-shrink: 0; }
+.top-list .rank.todo-icon svg { width: 16px; height: 16px; }
 .top-list .info { flex: 1; min-width: 0; }
 .top-list .info .t { font-weight: 600; font-size: 13px; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .top-list .info .s { font-size: 11.5px; color: var(--ink-faint); }
