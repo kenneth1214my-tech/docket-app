@@ -1,8 +1,9 @@
 const { Redis } = require("@upstash/redis");
 const { issueCookie, readJsonBody, verifyPassword } = require("./_session");
+const { getUsers, findUserByEmail } = require("./_users");
 
 var redis = new Redis({ url: process.env.KV_REST_API_URL, token: process.env.KV_REST_API_TOKEN });
-var PASSWORD_KEY = "docket:password_hash";
+var PASSWORD_KEY = "docket:password_hash"; // the old single shared password - kept as an emergency fallback only
 
 module.exports = async (req, res) => {
   if (req.method !== "POST") {
@@ -18,29 +19,50 @@ module.exports = async (req, res) => {
     return;
   }
 
-  var ok;
-  try {
-    // Once the team has changed the password at least once (via Change
-    // Password), the stored hash is authoritative. Until then, the
-    // TEAM_LOGIN_PASSWORD env var is both the default password and - even
-    // after it's changed - the recovery code for Forgot Password.
-    var stored = await redis.get(PASSWORD_KEY);
-    if (stored) {
-      ok = verifyPassword(body && body.password, stored);
-    } else {
-      var fallback = process.env.TEAM_LOGIN_PASSWORD;
-      ok = !!fallback && body && body.password === fallback;
+  // Emergency access: the team's original shared password, unrelated to any
+  // personal account. Always available so no one gets permanently locked
+  // out, and it's the only way in before any personal accounts exist yet.
+  if (body && body.emergencyPassword) {
+    var emergencyOk;
+    try {
+      var stored = await redis.get(PASSWORD_KEY);
+      if (stored) {
+        emergencyOk = verifyPassword(body.emergencyPassword, stored);
+      } else {
+        var fallback = process.env.TEAM_LOGIN_PASSWORD;
+        emergencyOk = !!fallback && body.emergencyPassword === fallback;
+      }
+    } catch (e) {
+      res.status(500).json({ error: "Could not verify password: " + (e && e.message ? e.message : String(e)) });
+      return;
     }
+    if (!emergencyOk) {
+      res.status(401).json({ error: "Incorrect emergency password." });
+      return;
+    }
+    issueCookie(res, { sub: "emergency", email: null, name: "Emergency Access", role: "admin" });
+    res.status(200).json({ ok: true });
+    return;
+  }
+
+  // Normal per-user login.
+  if (!body || !body.email || !body.password) {
+    res.status(400).json({ error: "Enter your email and password." });
+    return;
+  }
+  var users;
+  try {
+    users = await getUsers();
   } catch (e) {
-    res.status(500).json({ error: "Could not verify password: " + (e && e.message ? e.message : String(e)) });
+    res.status(500).json({ error: "Could not verify login: " + (e && e.message ? e.message : String(e)) });
+    return;
+  }
+  var user = findUserByEmail(users, body.email);
+  if (!user || user.active === false || !verifyPassword(body.password, user.passwordHash)) {
+    res.status(401).json({ error: "Incorrect email or password." });
     return;
   }
 
-  if (!ok) {
-    res.status(401).json({ error: "Incorrect password." });
-    return;
-  }
-
-  issueCookie(res);
+  issueCookie(res, { sub: user.id, email: user.email, name: user.name, role: user.role });
   res.status(200).json({ ok: true });
 };

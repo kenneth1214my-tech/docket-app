@@ -36,6 +36,29 @@ module.exports = async (req, res) => {
       return;
     }
     try {
+      // The client always PUTs the whole blob (no per-record endpoints), so
+      // this is the only place that can actually tell "did something get
+      // deleted" - by diffing against what's currently stored. A member's
+      // UI already hides delete/clear-all/import, but this is the real
+      // enforcement: any contract id present now and missing from the new
+      // payload is a deletion, and only admins may make one (this also
+      // naturally covers Clear All and Import, both of which drop ids too).
+      if (session.role !== "admin") {
+        var current = await redis.get(STATE_KEY);
+        if (current && Array.isArray(current.contracts)) {
+          var newIds = {};
+          body.contracts.forEach(function (c) { newIds[c.id] = true; });
+          var deleted = current.contracts.some(function (c) { return !newIds[c.id]; });
+          if (deleted) {
+            res.status(403).json({ error: "Only admins can delete contracts." });
+            return;
+          }
+        }
+        // Admin Settings lives in this same blob - a member's save should
+        // never be able to smuggle a settings change through, even by
+        // accident (e.g. a stale local copy). Keep whatever's already there.
+        if (current) body.settings = current.settings;
+      }
       await redis.set(STATE_KEY, body);
       res.status(200).json({ ok: true });
     } catch (e) {

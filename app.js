@@ -117,6 +117,11 @@
   }
 
   var STATE = JSON.parse(JSON.stringify(EMPTY_STATE)); // placeholder until boot() resolves the real, server-backed state
+  // Who's logged in right now - fetched once from /api/me after a successful
+  // boot (see boot()). Used for createdBy/updatedBy tracking and for hiding
+  // admin-only UI client-side (the server enforces the actual permissions).
+  var CURRENT_USER = { id: "", name: "", email: "", role: "member", emergency: false };
+  function isAdmin() { return CURRENT_USER.role === "admin"; }
   var UI = {
     view: sessionStorage.getItem("docket_ui_view") || "dashboard",
     lang: loadLang(),
@@ -805,15 +810,18 @@
           '<button class="nav-item' + (UI.view === "accounts" ? " active" : "") + '" data-nav="accounts">' + navIcon("accounts") + esc(t("nav_accounts")) + "</button>" +
         "</nav>" +
         '<div class="sidebar-foot">' +
+          '<div class="current-user">' + esc(t("logged_in_as")) + " <strong>" + esc(CURRENT_USER.name || CURRENT_USER.email || t("login_emergency_title")) + "</strong>" +
+            '<span class="role-tag">' + esc(isAdmin() ? t("role_admin") : t("role_member")) + "</span></div>" +
           "<div><strong>" + esc(t("sidebar_data_title")) + "</strong><br>" + esc(t("sidebar_data_body")) + "</div>" +
           '<div class="sidebar-actions">' +
             '<button class="link-btn" data-action="manage-entities">' + esc(t("manage_entities")) + "</button>" +
-            '<button class="link-btn" data-action="admin-settings">' + esc(t("admin_settings")) + "</button>" +
+            (isAdmin() ? '<button class="link-btn" data-action="manage-users">' + esc(t("manage_users")) + "</button>" : "") +
+            (isAdmin() ? '<button class="link-btn" data-action="admin-settings">' + esc(t("admin_settings")) + "</button>" : "") +
             '<button class="link-btn" data-action="ai-settings">' + esc(t("ai_settings")) + "</button>" +
             '<button class="link-btn" data-action="export">' + esc(t("export_data")) + "</button>" +
             '<button class="link-btn" data-action="export-excel">' + esc(t("export_excel")) + "</button>" +
-            '<button class="link-btn" data-action="import">' + esc(t("import_data")) + "</button>" +
-            (STATE.contracts.length === 0 ? '<button class="link-btn" data-action="load-sample">' + esc(t("load_sample")) + "</button>" : '<button class="link-btn" data-action="clear-all">' + esc(t("clear_all")) + "</button>") +
+            (isAdmin() ? '<button class="link-btn" data-action="import">' + esc(t("import_data")) + "</button>" : "") +
+            (STATE.contracts.length === 0 ? '<button class="link-btn" data-action="load-sample">' + esc(t("load_sample")) + "</button>" : (isAdmin() ? '<button class="link-btn" data-action="clear-all">' + esc(t("clear_all")) + "</button>" : "")) +
             '<button class="link-btn" data-action="change-password">' + esc(t("change_password_link")) + "</button>" +
             '<button class="link-btn" data-action="logout">' + esc(t("logout_btn")) + "</button>" +
           "</div>" +
@@ -1072,7 +1080,7 @@
                 (c.fileUrl ? '<a class="icon-btn" href="' + esc(c.fileUrl) + '" target="_blank" rel="noopener" title="' + esc(t("view_original_document")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 2.5h7l3 3v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-14a1 1 0 0 1 1-1z"/><path d="M12 2.5v3h3"/></svg></a>' : "") +
                 (hasValidRenewal(c) ? "" : '<button class="icon-btn" data-action="renew" data-id="' + esc(c.id) + '" title="' + esc(t("action_renew")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15.5 6.5A6 6 0 1 0 16.8 11" stroke-linecap="round"/><path d="M15.5 3v4h-4" stroke-linecap="round" stroke-linejoin="round"/></svg></button>') +
                 '<button class="icon-btn" data-action="edit" data-id="' + esc(c.id) + '" title="' + esc(t("action_edit")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M13.5 3.5l3 3L6 17l-4 1 1-4z"/></svg></button>' +
-                '<button class="icon-btn" data-action="delete" data-id="' + esc(c.id) + '" title="' + esc(t("action_delete")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h12M8 6V4h4v2m-7 0 1 11h8l1-11"/></svg></button>' +
+                (isAdmin() ? '<button class="icon-btn" data-action="delete" data-id="' + esc(c.id) + '" title="' + esc(t("action_delete")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h12M8 6V4h4v2m-7 0 1 11h8l1-11"/></svg></button>' : "") +
               "</div></td>" +
             "</tr>";
           }).join("") + "</tbody></table>" :
@@ -1314,6 +1322,9 @@
     if (UI.modal.mode === "delete") return renderDeleteModal();
     if (UI.modal.mode === "clear-all") return renderClearAllModal();
     if (UI.modal.mode === "manage-entities") return renderEntitiesModal();
+    if (UI.modal.mode === "manage-users") return renderUserManagementModal();
+    if (UI.modal.mode === "delete-user") return renderDeleteUserModal();
+    if (UI.modal.mode === "reset-user-password") return renderResetUserPasswordModal();
     if (UI.modal.mode === "admin-settings") return renderAdminSettingsModal();
     if (UI.modal.mode === "ai-settings") return renderAiSettingsModal();
     if (UI.modal.mode === "add-addendum") return renderAddAddendumModal();
@@ -1405,6 +1416,86 @@
             "</div>" +
           "</div>" +
           '<div class="modal-foot"><button type="button" class="btn btn-primary" data-action="close-modal">' + esc(t("entities_done")) + "</button></div>" +
+        "</div>" +
+      "</div>"
+    );
+  }
+
+  // Admin-only. Users live in their own Redis key (see api/_users.js), not
+  // the shared STATE blob, so this modal fetches them separately - see
+  // openUserManagement() for the load, this just renders whatever's there.
+  function renderUserManagementModal() {
+    var m = UI.modal;
+    var body;
+    if (m.loading) {
+      body = '<div class="upload-zone reading"><div class="upload-spinner"></div></div>';
+    } else if (m.error) {
+      body = '<div class="login-error">' + esc(m.error) + "</div>";
+    } else {
+      var rows = (m.users || []).map(function (u) {
+        var isSelf = u.id === CURRENT_USER.id;
+        return '<div class="user-row' + (u.active === false ? " inactive" : "") + '">' +
+          '<div class="user-info"><div class="user-name">' + esc(u.name) + (isSelf ? " " + esc(t("you_tag")) : "") + "</div><div class=\"user-email\">" + esc(u.email) + "</div></div>" +
+          '<div class="user-actions">' +
+            '<select data-action="user-role-select" data-id="' + esc(u.id) + '"' + (isSelf ? " disabled" : "") + '>' +
+              '<option value="member"' + (u.role === "member" ? " selected" : "") + ">" + esc(t("role_member")) + "</option>" +
+              '<option value="admin"' + (u.role === "admin" ? " selected" : "") + ">" + esc(t("role_admin")) + "</option>" +
+            "</select>" +
+            '<button type="button" class="btn btn-ghost btn-sm" data-action="user-reset-password" data-id="' + esc(u.id) + '">' + esc(t("user_reset_password_btn")) + "</button>" +
+            '<button type="button" class="btn btn-ghost btn-sm" data-action="user-toggle-active" data-id="' + esc(u.id) + '" data-active="' + (u.active !== false) + '">' + esc(u.active === false ? t("user_activate_btn") : t("user_deactivate_btn")) + "</button>" +
+            (isSelf ? "" : '<button type="button" class="icon-btn" data-action="user-delete" data-id="' + esc(u.id) + '" aria-label="' + esc(t("delete")) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M4 6h12M8 6V4h4v2m-7 0 1 11h8l1-11"/></svg></button>') +
+          "</div>" +
+        "</div>";
+      }).join("");
+      body = '<div class="entities-hint">' + esc(t("users_hint")) + "</div>" +
+        '<div class="user-list">' + (rows || '<div class="addendum-empty">' + esc(t("users_empty")) + "</div>") + "</div>" +
+        '<div class="fieldset-title">' + esc(t("add_user_title")) + "</div>" +
+        '<div class="field-grid">' +
+          '<div class="field"><label>' + esc(t("f_user_name")) + '</label><input type="text" id="new-user-name"></div>' +
+          '<div class="field"><label>' + esc(t("f_user_email")) + '</label><input type="email" id="new-user-email"></div>' +
+          '<div class="field"><label>' + esc(t("f_user_password")) + '</label><input type="password" id="new-user-password" autocomplete="new-password"></div>' +
+          '<div class="field"><label>' + esc(t("f_user_role")) + '</label><select id="new-user-role"><option value="member">' + esc(t("role_member")) + '</option><option value="admin">' + esc(t("role_admin")) + "</option></select></div>" +
+        "</div>" +
+        '<button type="button" class="btn btn-ghost btn-sm" data-action="add-user">' + esc(t("add_user_btn")) + "</button>";
+    }
+    return (
+      '<div class="modal-overlay" data-overlay>' +
+        '<div class="modal">' +
+          '<div class="modal-head"><h2>' + esc(t("manage_users")) + "</h2><button class=\"icon-btn\" data-action=\"close-modal\" aria-label=\"" + esc(t("cancel")) + "\"><svg viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><path d=\"M5 5l10 10M15 5L5 15\"/></svg></button></div>" +
+          '<div class="modal-body">' + body + "</div>" +
+          '<div class="modal-foot"><button type="button" class="btn btn-primary" data-action="close-modal">' + esc(t("entities_done")) + "</button></div>" +
+        "</div>" +
+      "</div>"
+    );
+  }
+
+  function renderDeleteUserModal() {
+    var u = (UI.modal.users || []).find(function (x) { return x.id === UI.modal.id; });
+    if (!u) return "";
+    return (
+      '<div class="modal-overlay confirm-modal" data-overlay>' +
+        '<div class="modal">' +
+          '<div class="modal-head"><h2>' + esc(t("modal_delete_user_title")) + "</h2></div>" +
+          '<div class="modal-body">' + esc(t("modal_delete_user_body_pre")) + " <strong>" + esc(u.name) + "</strong> (" + esc(u.email) + ") " + esc(t("modal_delete_user_body_post")) + "</div>" +
+          '<div class="modal-foot"><button class="btn btn-ghost" data-action="close-modal">' + esc(t("cancel")) + '</button><button class="btn btn-danger" data-action="confirm-delete-user" data-id="' + esc(u.id) + '">' + esc(t("delete")) + "</button></div>" +
+        "</div>" +
+      "</div>"
+    );
+  }
+
+  function renderResetUserPasswordModal() {
+    var m = UI.modal;
+    var u = (m.users || []).find(function (x) { return x.id === m.id; });
+    return (
+      '<div class="modal-overlay" data-overlay>' +
+        '<div class="modal">' +
+          '<div class="modal-head"><h2>' + esc(t("reset_user_password_title")) + "</h2><button class=\"icon-btn\" data-action=\"close-modal\" aria-label=\"" + esc(t("cancel")) + "\"><svg viewBox=\"0 0 20 20\" fill=\"none\" stroke=\"currentColor\" stroke-width=\"1.8\"><path d=\"M5 5l10 10M15 5L5 15\"/></svg></button></div>" +
+          '<div class="modal-body">' +
+            '<p>' + esc(t("reset_user_password_body_pre")) + " <strong>" + esc(u ? u.name : "") + "</strong></p>" +
+            (m.error ? '<div class="login-error">' + esc(m.error) + "</div>" : "") +
+            '<div class="field full"><label>' + esc(t("new_password_label")) + '</label><input type="password" id="reset-user-new-password" autocomplete="new-password" minlength="6"></div>' +
+          "</div>" +
+          '<div class="modal-foot"><button type="button" class="btn btn-ghost" data-action="close-modal">' + esc(t("cancel")) + '</button><button type="button" class="btn btn-primary" data-action="confirm-reset-user-password" data-id="' + esc(m.id) + '">' + esc(t("user_reset_password_btn")) + "</button></div>" +
         "</div>" +
       "</div>"
     );
@@ -1651,6 +1742,10 @@
             (editing && c.fileUrl ? '<a class="view-original-link" href="' + esc(c.fileUrl) + '" target="_blank" rel="noopener"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M5 2.5h7l3 3v12a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1v-14a1 1 0 0 1 1-1z"/><path d="M12 2.5v3h3"/></svg>' + esc(t("view_original_document")) + (c.fileName ? " (" + esc(c.fileName) + ")" : "") + "</a>" : "") +
             (renewedFromExists ? '<button type="button" class="view-original-link" data-action="edit" data-id="' + esc(c.renewedFrom) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15.5 6.5A6 6 0 1 0 16.8 11" stroke-linecap="round"/><path d="M15.5 3v4h-4" stroke-linecap="round" stroke-linejoin="round"/></svg>' + esc(t("renewed_from_label")) + " " + esc(c.renewedFrom) + "</button>" : "") +
             (renewedToExists ? '<button type="button" class="view-original-link" data-action="edit" data-id="' + esc(c.renewedTo) + '"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M15.5 6.5A6 6 0 1 0 16.8 11" stroke-linecap="round"/><path d="M15.5 3v4h-4" stroke-linecap="round" stroke-linejoin="round"/></svg>' + esc(t("renewed_as_label")) + " " + esc(c.renewedTo) + "</button>" : "") +
+            (editing && (c.createdBy || c.updatedBy) ? '<div class="audit-trail">' +
+              (c.createdBy ? '<span>' + esc(t("audit_created_by")) + " " + esc(c.createdBy) + "</span>" : "") +
+              (c.updatedBy && c.updatedBy !== c.createdBy ? '<span>' + esc(t("audit_updated_by")) + " " + esc(c.updatedBy) + "</span>" : "") +
+            "</div>" : "") +
             (editing ? "" : renderUploadZone()) +
             '<div class="fieldset-title">' + esc(t("fs_basics")) + "</div>" +
             '<div class="field-grid">' +
@@ -2137,6 +2232,110 @@
       });
     });
 
+    document.querySelectorAll('[data-action="manage-users"]').forEach(function (el) {
+      el.addEventListener("click", function () {
+        var returnTo = (UI.modal && (UI.modal.mode === "add" || UI.modal.mode === "edit")) ? UI.modal : null;
+        UI.modal = { mode: "manage-users", returnTo: returnTo, loading: true, users: null, error: null };
+        render();
+        fetchUsers();
+      });
+    });
+    document.querySelectorAll('[data-action="user-role-select"]').forEach(function (el) {
+      el.addEventListener("change", function () {
+        fetch("/api/users", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: el.getAttribute("data-id"), role: el.value })
+        }).then(function (res) {
+          return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; });
+        }).then(function (result) {
+          if (!result.ok) showToast((result.data && result.data.error) || t("toast_sync_failed_prefix"));
+          if (UI.modal && UI.modal.mode === "manage-users") { UI.modal.loading = true; render(); fetchUsers(); }
+        });
+      });
+    });
+    document.querySelectorAll('[data-action="user-toggle-active"]').forEach(function (el) {
+      el.addEventListener("click", function () {
+        fetch("/api/users", {
+          method: "PUT",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ id: el.getAttribute("data-id"), active: el.getAttribute("data-active") !== "true" })
+        }).then(function (res) {
+          return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; });
+        }).then(function (result) {
+          if (!result.ok) { showToast((result.data && result.data.error) || t("toast_sync_failed_prefix")); return; }
+          if (UI.modal && UI.modal.mode === "manage-users") { UI.modal.loading = true; render(); fetchUsers(); }
+        });
+      });
+    });
+    var addUserBtn = document.querySelector('[data-action="add-user"]');
+    if (addUserBtn) addUserBtn.addEventListener("click", function () {
+      var name = document.getElementById("new-user-name").value.trim();
+      var email = document.getElementById("new-user-email").value.trim();
+      var password = document.getElementById("new-user-password").value;
+      var role = document.getElementById("new-user-role").value;
+      if (!name || !email || !password) { showToast(t("toast_user_required")); return; }
+      fetch("/api/users", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ name: name, email: email, password: password, role: role })
+      }).then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; });
+      }).then(function (result) {
+        if (!result.ok) { showToast((result.data && result.data.error) || t("toast_sync_failed_prefix")); return; }
+        showToast(t("toast_user_added"));
+        if (UI.modal && UI.modal.mode === "manage-users") { UI.modal.loading = true; render(); fetchUsers(); }
+      });
+    });
+    document.querySelectorAll('[data-action="user-reset-password"]').forEach(function (el) {
+      el.addEventListener("click", function () {
+        UI.modal = { mode: "reset-user-password", id: el.getAttribute("data-id"), users: UI.modal.users, returnTo: UI.modal, error: null };
+        render();
+      });
+    });
+    var confirmResetUserPwBtn = document.querySelector('[data-action="confirm-reset-user-password"]');
+    if (confirmResetUserPwBtn) confirmResetUserPwBtn.addEventListener("click", function () {
+      var id = confirmResetUserPwBtn.getAttribute("data-id");
+      var newPassword = document.getElementById("reset-user-new-password").value;
+      if (!newPassword || newPassword.length < 6) { UI.modal.error = t("password_too_short"); render(); return; }
+      fetch("/api/users", {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: id, newPassword: newPassword })
+      }).then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; });
+      }).then(function (result) {
+        if (!result.ok) { UI.modal.error = (result.data && result.data.error) || t("toast_sync_failed_prefix"); render(); return; }
+        var returnTo = UI.modal.returnTo;
+        UI.modal = returnTo;
+        render();
+        showToast(t("toast_user_password_reset"));
+      });
+    });
+    document.querySelectorAll('[data-action="user-delete"]').forEach(function (el) {
+      el.addEventListener("click", function () {
+        UI.modal = { mode: "delete-user", id: el.getAttribute("data-id"), users: UI.modal.users, returnTo: UI.modal };
+        render();
+      });
+    });
+    var confirmDeleteUserBtn = document.querySelector('[data-action="confirm-delete-user"]');
+    if (confirmDeleteUserBtn) confirmDeleteUserBtn.addEventListener("click", function () {
+      var returnTo = UI.modal.returnTo;
+      fetch("/api/users", {
+        method: "DELETE",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ id: confirmDeleteUserBtn.getAttribute("data-id") })
+      }).then(function (res) {
+        return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; });
+      }).then(function (result) {
+        if (!result.ok) { showToast((result.data && result.data.error) || t("toast_sync_failed_prefix")); UI.modal = returnTo; render(); return; }
+        UI.modal = returnTo;
+        render();
+        showToast(t("toast_user_deleted"));
+        if (UI.modal && UI.modal.mode === "manage-users") { UI.modal.loading = true; render(); fetchUsers(); }
+      });
+    });
+
     document.querySelectorAll('[data-action="ai-settings"]').forEach(function (el) {
       el.addEventListener("click", function () {
         var returnTo = (UI.modal && (UI.modal.mode === "add" || UI.modal.mode === "edit")) ? UI.modal : null;
@@ -2509,8 +2708,10 @@
         data.termValue = data.termValue ? Number(data.termValue) : null;
         normalizeContractCase(data);
 
+        var whoAmI = CURRENT_USER.name || CURRENT_USER.email || t("login_emergency_title");
         if (UI.modal.mode === "edit") {
           var id = UI.modal.id;
+          data.updatedBy = whoAmI;
           persist(function (next) {
             var idx = next.contracts.findIndex(function (c) { return c.id === id; });
             if (idx !== -1) next.contracts[idx] = Object.assign({}, next.contracts[idx], data);
@@ -2519,6 +2720,8 @@
           if (UI.modal.fileUrl) { data.fileUrl = UI.modal.fileUrl; data.fileName = UI.modal.sourceFileName; }
           var renewedFromId = UI.modal.renewedFromId || null;
           if (renewedFromId) data.renewedFrom = renewedFromId;
+          data.createdBy = whoAmI;
+          data.updatedBy = whoAmI;
           persist(function (next) {
             data.id = nextContractId(next.contracts);
             if (renewedFromId) {
@@ -2557,17 +2760,36 @@
         "</div></div>"
       );
     }
+    if (mode === "emergency") {
+      return (
+        '<div class="login-screen"><div class="login-card">' +
+          logoMark() +
+          "<h1>" + esc(t("login_emergency_title")) + "</h1>" +
+          '<p class="login-sub">' + esc(t("login_emergency_subtitle")) + "</p>" +
+          '<form id="login-form" data-mode="emergency">' +
+            '<input type="password" id="login-password-input" placeholder="' + esc(t("login_password_placeholder")) + '" autocomplete="current-password" autofocus required>' +
+            (errorMsg ? '<div class="login-error">' + esc(errorMsg) + "</div>" : "") +
+            '<button type="submit" class="btn btn-primary">' + esc(t("login_submit")) + "</button>" +
+          "</form>" +
+          '<button type="button" class="link-btn login-forgot-link" data-action="login-forgot">' + esc(t("forgot_password_link")) + "</button>" +
+          '<button type="button" class="link-btn login-back-link" data-action="login-use-personal">' + esc(t("login_use_personal_link")) + "</button>" +
+          '<div class="app-credit">' + esc(t("credit_by")) + " Kenneth SOO</div>" +
+        "</div></div>"
+      );
+    }
     return (
       '<div class="login-screen"><div class="login-card">' +
         logoMark() +
         "<h1>" + esc(t("login_title")) + "</h1>" +
         '<p class="login-sub">' + esc(t("login_subtitle")) + "</p>" +
-        '<form id="login-form">' +
-          '<input type="password" id="login-password-input" placeholder="' + esc(t("login_password_placeholder")) + '" autocomplete="current-password" autofocus required>' +
+        '<form id="login-form" data-mode="personal">' +
+          '<input type="email" id="login-email-input" placeholder="' + esc(t("login_email_placeholder")) + '" autocomplete="username" autofocus required>' +
+          '<input type="password" id="login-password-input" placeholder="' + esc(t("login_password_placeholder")) + '" autocomplete="current-password" required>' +
           (errorMsg ? '<div class="login-error">' + esc(errorMsg) + "</div>" : "") +
           '<button type="submit" class="btn btn-primary">' + esc(t("login_submit")) + "</button>" +
         "</form>" +
-        '<button type="button" class="link-btn login-forgot-link" data-action="login-forgot">' + esc(t("forgot_password_link")) + "</button>" +
+        '<div class="login-hint">' + esc(t("login_forgot_personal_hint")) + "</div>" +
+        '<button type="button" class="link-btn login-forgot-link" data-action="login-use-emergency">' + esc(t("login_use_emergency_link")) + "</button>" +
         '<div class="app-credit">' + esc(t("credit_by")) + " Kenneth SOO</div>" +
       "</div></div>"
     );
@@ -2608,24 +2830,30 @@
 
     var forgotBtn = document.querySelector('[data-action="login-forgot"]');
     if (forgotBtn) forgotBtn.addEventListener("click", function () { renderLogin(null, "reset"); });
+    var useEmergencyBtn = document.querySelector('[data-action="login-use-emergency"]');
+    if (useEmergencyBtn) useEmergencyBtn.addEventListener("click", function () { renderLogin(null, "emergency"); });
+    var usePersonalBtn = document.querySelector('[data-action="login-use-personal"]');
+    if (usePersonalBtn) usePersonalBtn.addEventListener("click", function () { renderLogin(); });
 
     var form = document.getElementById("login-form");
     form.addEventListener("submit", function (e) {
       e.preventDefault();
+      var isEmergency = form.getAttribute("data-mode") === "emergency";
       var password = document.getElementById("login-password-input").value;
+      var payload = isEmergency ? { emergencyPassword: password } : { email: document.getElementById("login-email-input").value, password: password };
       var submitBtn = form.querySelector('button[type="submit"]');
       submitBtn.disabled = true;
       fetch("/api/login", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ password: password })
+        body: JSON.stringify(payload)
       }).then(function (res) {
         return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; });
       }).then(function (result) {
-        if (!result.ok) { renderLogin((result.data && result.data.error) || t("login_incorrect")); return; }
+        if (!result.ok) { renderLogin((result.data && result.data.error) || t("login_incorrect"), isEmergency ? "emergency" : "login"); return; }
         boot();
       }).catch(function (err) {
-        renderLogin(t("login_generic_error_prefix") + (err && err.message ? err.message : String(err)));
+        renderLogin(t("login_generic_error_prefix") + (err && err.message ? err.message : String(err)), isEmergency ? "emergency" : "login");
       });
     });
   }
@@ -2653,11 +2881,43 @@
     render();
   }
 
+  // Users live in their own Redis key (see api/_users.js), fetched on demand
+  // when the (admin-only) User Management modal is open - re-run after every
+  // change there so the list always reflects what the server actually saved,
+  // including a rejected change (e.g. the last-admin guard) reverting visibly.
+  function fetchUsers() {
+    fetch("/api/users", { method: "GET" }).then(function (res) {
+      return res.json().catch(function () { return {}; }).then(function (data) { return { ok: res.ok, data: data }; });
+    }).then(function (result) {
+      if (!UI.modal || UI.modal.mode !== "manage-users") return;
+      UI.modal.loading = false;
+      if (!result.ok) { UI.modal.error = (result.data && result.data.error) || t("toast_sync_failed_prefix"); render(); return; }
+      UI.modal.users = result.data;
+      UI.modal.error = null;
+      render();
+    }).catch(function (err) {
+      if (!UI.modal || UI.modal.mode !== "manage-users") return;
+      UI.modal.loading = false;
+      UI.modal.error = err && err.message ? err.message : String(err);
+      render();
+    });
+  }
+
+  function fetchCurrentUser() {
+    return fetch("/api/me", { method: "GET" }).then(function (res) {
+      if (!res.ok) return null;
+      return res.json();
+    }).catch(function () { return null; });
+  }
+
   function boot() {
     document.getElementById("app-root").innerHTML = '<div class="login-screen"><div class="login-card"><div class="login-loading">' + esc(t("loading")) + "</div></div></div>";
     fetchStateFromServer().then(function (result) {
       if (result.unauthenticated) { renderLogin(); return; }
-      finishBoot(result.data);
+      return fetchCurrentUser().then(function (me) {
+        if (me) CURRENT_USER = me;
+        finishBoot(result.data);
+      });
     }).catch(function (err) {
       renderLogin(t("login_generic_error_prefix") + (err && err.message ? err.message : String(err)));
     });

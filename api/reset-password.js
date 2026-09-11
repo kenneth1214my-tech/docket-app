@@ -35,7 +35,7 @@ module.exports = async (req, res) => {
 
   try {
     await redis.set(PASSWORD_KEY, hashPassword(body.newPassword));
-    issueCookie(res);
+    issueCookie(res, { sub: "emergency", email: null, name: "Emergency Access", role: "admin" });
     res.status(200).json({ ok: true });
   } catch (e) {
     res.status(500).json({ error: "Could not reset password: " + (e && e.message ? e.message : String(e)) });

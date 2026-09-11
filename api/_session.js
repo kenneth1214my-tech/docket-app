@@ -1,10 +1,11 @@
-// Shared helper for the single-team-login session cookie. Not a route -
-// files starting with "_" are excluded from Vercel's /api file-routing.
+// Shared helper for the session cookie. Not a route - files starting with
+// "_" are excluded from Vercel's /api file-routing.
 //
-// Stateless signed cookie (HMAC-SHA256), not a session table: this app has
-// exactly one shared login for the whole team, not per-user accounts, so
-// there is nothing to look up server-side beyond "is this signature valid
-// and not expired."
+// Stateless signed cookie (HMAC-SHA256), not a session table: the payload
+// itself carries who's logged in (sub/email/name/role), so there's nothing
+// to look up server-side beyond "is this signature valid and not expired."
+// A payload with sub:"emergency" means the shared fallback password was
+// used rather than a personal account - see login.js.
 const crypto = require("crypto");
 
 function sign(payload, secret) {
@@ -47,8 +48,11 @@ function parseCookies(req) {
 var COOKIE_NAME = "docket_session";
 var MAX_AGE_MS = 30 * 24 * 60 * 60 * 1000; // 30 days
 
-function issueCookie(res) {
-  var token = sign({ exp: Date.now() + MAX_AGE_MS }, process.env.SESSION_SECRET);
+// identity: { sub, email, name, role } - whatever login.js determined the
+// caller is. Merged with exp and re-signed; nothing is looked up per request.
+function issueCookie(res, identity) {
+  var payload = Object.assign({}, identity, { exp: Date.now() + MAX_AGE_MS });
+  var token = sign(payload, process.env.SESSION_SECRET);
   res.setHeader("Set-Cookie", COOKIE_NAME + "=" + token + "; Path=/; HttpOnly; Secure; SameSite=Lax; Max-Age=" + Math.floor(MAX_AGE_MS / 1000));
 }
 
@@ -65,6 +69,19 @@ function requireSession(req, res) {
     return null;
   }
   return payload;
+}
+
+// Same as requireSession, but also demands the admin role - for account
+// management and system settings. The emergency shared-password login
+// always carries role "admin" (see login.js), so it can always reach these.
+function requireAdmin(req, res) {
+  var session = requireSession(req, res);
+  if (!session) return null;
+  if (session.role !== "admin") {
+    res.status(403).json({ error: "Admins only." });
+    return null;
+  }
+  return session;
 }
 
 async function readJsonBody(req) {
@@ -90,4 +107,4 @@ function verifyPassword(password, stored) {
   return a.length === b.length && crypto.timingSafeEqual(a, b);
 }
 
-module.exports = { issueCookie, clearCookie, requireSession, readJsonBody, hashPassword, verifyPassword };
+module.exports = { issueCookie, clearCookie, requireSession, requireAdmin, readJsonBody, hashPassword, verifyPassword };
