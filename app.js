@@ -168,6 +168,10 @@
     var n = Number(v);
     return (ccy || "") + " " + n.toLocaleString("en-SG", { maximumFractionDigits: 0 });
   }
+  function fmtDuration(value, unit) {
+    if (value == null || value === "") return "—";
+    return (value + " " + (tx(unit) || "")).trim();
+  }
   function todayMidnight() { var d = new Date(); d.setHours(0, 0, 0, 0); return d; }
 
   function computeAlert(c) {
@@ -336,7 +340,7 @@
     if (!window.XLSX) { showToast(t("toast_excel_lib_missing")); return; }
     var headers = ["ID", t("f_title"), t("col_entity"), t("f_counterparty"), t("f_counterpartyType"), t("f_counterpartyContact"), t("f_counterpartyDesignation"), t("f_department"),
       t("f_contractType"), t("f_riskTier"), t("f_confidentiality"), t("f_status"),
-      t("f_startDate"), t("f_term"), t("f_expiryDate"), t("col_alert"), t("f_autoRenewal"), t("f_noticeDays"),
+      t("f_startDate"), t("f_term"), t("f_expiryDate"), t("col_alert"), t("f_autoRenewal"), t("f_noticeDays"), t("f_renewalOption"),
       t("f_value"), t("f_currency"), t("f_paymentTerms"), t("f_governingLaw"),
       t("f_obligations"), t("f_terminationClause"), t("f_liabilityNotes"), t("f_tags"), t("f_notes"),
       t("view_original_document"), t("fs_addendums")];
@@ -350,6 +354,7 @@
         c.termValue != null && c.termValue !== "" ? (c.termValue + " " + (tx(c.termUnit) || "")).trim() : "",
         c.expiryDate ? new Date(c.expiryDate + "T00:00:00") : "", a.label || "", tx(c.autoRenewal) || "",
         c.noticeDays != null && c.noticeDays !== "" ? Number(c.noticeDays) : "",
+        c.renewalOptionValue != null && c.renewalOptionValue !== "" ? (c.renewalOptionValue + " " + (tx(c.renewalOptionUnit) || "")).trim() : "",
         c.value != null && c.value !== "" ? Number(c.value) : "", c.currency || "", c.paymentTerms || "",
         c.governingLaw || "", c.obligations || "", c.terminationClause || "", c.liabilityNotes || "",
         c.tags || "", c.notes || "", c.fileUrl || "",
@@ -1062,7 +1067,7 @@
           (extraFilterLabel() ? '<span class="active-filter-chip">' + esc(extraFilterLabel()) + '<button type="button" data-action="clear-extra-filter" aria-label="' + esc(t("clear_filter")) + '">&times;</button></span>' : "") +
         "</div>") +
         '<div class="table-wrap">' +
-        (rows.length ? '<table><thead><tr><th>' + esc(t("col_contract")) + '</th><th>' + esc(t("col_entity")) + '</th><th>' + esc(t("col_counterparty")) + '</th><th>' + esc(t("col_risk")) + '</th><th>' + esc(t("col_status")) + '</th><th>' + esc(t("col_expiry")) + '</th><th>' + esc(t("col_alert")) + '</th><th class="num">' + esc(t("col_value")) + "</th><th></th></tr></thead><tbody>" +
+        (rows.length ? '<table><thead><tr><th>' + esc(t("col_contract")) + '</th><th>' + esc(t("col_entity")) + '</th><th>' + esc(t("col_counterparty")) + '</th><th>' + esc(t("col_risk")) + '</th><th>' + esc(t("col_status")) + '</th><th>' + esc(t("col_expiry")) + '</th><th>' + esc(t("col_renewal_option")) + '</th><th>' + esc(t("col_alert")) + '</th><th class="num">' + esc(t("col_value")) + "</th><th></th></tr></thead><tbody>" +
           rows.map(function (x) {
             var c = x.c, a = x.a;
             return "<tr>" +
@@ -1074,6 +1079,7 @@
               '<td><span class="pill risk-' + slugClass(c.riskTier) + '">' + esc(tx(c.riskTier) || "—") + "</span></td>" +
               '<td><span class="pill status-' + slugClass(c.status) + '">' + esc(tx(c.status) || "—") + "</span></td>" +
               '<td class="mono">' + fmtDate(c.expiryDate) + "</td>" +
+              '<td class="mono">' + esc(fmtDuration(c.renewalOptionValue, c.renewalOptionUnit)) + "</td>" +
               '<td><span class="pill alert-' + a.key + '">' + esc(a.label) + "</span></td>" +
               '<td class="num">' + fmtMoney(c.value, c.currency) + "</td>" +
               '<td><div class="row-actions">' +
@@ -1768,6 +1774,7 @@
               fieldInput("expiryDate", t("f_expiryDate"), c.expiryDate, "date") +
               fieldSelect("autoRenewal", t("f_autoRenewal"), ["Yes", "No"], c.autoRenewal) +
               fieldInput("noticeDays", t("f_noticeDays"), c.noticeDays, "number") +
+              fieldDuration("renewalOptionValue", t("f_renewalOption"), c.renewalOptionValue, "renewalOptionUnit", c.renewalOptionUnit) +
             "</div>" +
             '<div class="fieldset-title">' + esc(t("fs_financial")) + "</div>" +
             '<div class="field-grid">' +
@@ -1815,6 +1822,16 @@
     delete draft.renewedTo;
     draft.status = "Draft";
     if (orig.expiryDate) draft.startDate = addDaysISO(orig.expiryDate, 1);
+    // An "Option to Renew" clause promises a further term that's often
+    // different from the original term (e.g. a 2-year lease with a 3-year
+    // renewal option) - honor that length instead of just repeating the
+    // original term when one was recorded on the contract being renewed.
+    if (orig.renewalOptionValue != null && orig.renewalOptionValue !== "") {
+      draft.termValue = orig.renewalOptionValue;
+      draft.termUnit = orig.renewalOptionUnit;
+    }
+    delete draft.renewalOptionValue;
+    delete draft.renewalOptionUnit;
     draft.expiryDate = (draft.startDate && draft.termValue) ?
       addMonthsISO(draft.startDate, draft.termUnit === "Years" ? draft.termValue * 12 : draft.termValue) : "";
     UI.modal = { mode: "add", draft: draft, sourceFileName: null, reading: false, fieldsFound: 0, renewedFromId: id };
