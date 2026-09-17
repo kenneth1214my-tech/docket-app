@@ -1792,6 +1792,7 @@
             (editing ? renderAddendumsSection(c) : "") +
             (editing ? renderInvoicesSection(c) : "") +
             (editing ? renderPaymentsSection(c) : "") +
+            (editing ? renderComplianceSection(c) : "") +
           "</div>" +
           '<div class="modal-foot">' +
             (editing && !renewedToExists ? '<button type="button" class="btn btn-ghost" data-action="renew" data-id="' + esc(c.id) + '">' + esc(t("action_renew")) + "</button>" : "") +
@@ -2078,6 +2079,192 @@
     if (btn) { btn.disabled = busy; btn.textContent = busy ? t("ai_drafting") : t("ai_draft_btn"); }
   }
 
+  // ---------- optional AI compliance/risk screening (same Anthropic key as drafting) ----------
+  // Scoped deliberately narrow: this reads only the summarized fields already
+  // recorded in the register (not the original document), and only flags
+  // conflict-of-interest patterns visible in that text itself - it cannot
+  // know that a counterparty is secretly linked to an insider unless the
+  // record itself says so. It's a first-pass screen, not legal advice; the
+  // disclaimer is shown with every result, not just mentioned once.
+  var COMPLIANCE_LANG_NAMES = { en: "English", zh: "Simplified Chinese", ms: "Malay", ko: "Korean", ja: "Japanese", id: "Indonesian", tl: "Filipino (Tagalog)" };
+  var COMPLIANCE_ASSESSMENTS = ["favorable", "balanced", "unfavorable", "needs_review"];
+  var COMPLIANCE_SEVERITIES = ["low", "medium", "high"];
+
+  function buildComplianceFacts(c) {
+    var lines = [];
+    function add(label, val) { if (val !== "" && val != null) lines.push(label + ": " + val); }
+    add("Title", c.title);
+    add("Contract type", tx(c.contractType));
+    add("Counterparty", c.counterparty);
+    add("Counterparty type", tx(c.counterpartyType));
+    add("Counterparty contact", c.counterpartyContact ? c.counterpartyContact + (c.counterpartyDesignation ? " (" + c.counterpartyDesignation + ")" : "") : "");
+    add("Department", tx(c.department));
+    add("Status", tx(c.status));
+    add("Start date", c.startDate);
+    add("Expiry date", c.expiryDate);
+    add("Term", c.termValue != null && c.termValue !== "" ? (c.termValue + " " + (tx(c.termUnit) || "")).trim() : "");
+    add("Auto-renewal", tx(c.autoRenewal));
+    add("Renewal notice period (days)", c.noticeDays);
+    add("Option to renew (further term)", c.renewalOptionValue != null && c.renewalOptionValue !== "" ? (c.renewalOptionValue + " " + (tx(c.renewalOptionUnit) || "")).trim() : "None recorded");
+    add("Value", c.value != null && c.value !== "" ? (c.value + " " + (c.currency || "")) : "");
+    add("Payment terms", c.paymentTerms);
+    add("Governing law", c.governingLaw);
+    add("Risk tier (internally assigned)", tx(c.riskTier));
+    add("Confidentiality", tx(c.confidentiality));
+    add("Obligations summary", c.obligations);
+    add("Termination clause summary", c.terminationClause);
+    add("Liability notes", c.liabilityNotes);
+    add("Other notes", c.notes);
+    add("Tags", c.tags);
+    return lines.join("\n");
+  }
+
+  function callComplianceAnalysis(key, c, lang) {
+    var facts = buildComplianceFacts(c);
+    var langName = COMPLIANCE_LANG_NAMES[lang] || "English";
+    var prompt = "You are a contract compliance and risk screening assistant helping a back-office team do a first-pass review. " +
+      "You are given only the SUMMARIZED fields recorded in a contract register below - not the full original legal document. " +
+      "Assess this contract for: (1) overall balance of terms toward our organization, (2) conflict-of-interest red flags visible in this text itself " +
+      "(e.g. vague or unjustified non-market pricing, no mention of a competitive process where one would be expected, a counterparty contact who also " +
+      "appears to represent our own side, unusually generous terms with no stated reason), and (3) other compliance/legal risk gaps " +
+      "(e.g. missing liability cap, one-sided indemnity, ambiguous or missing termination rights, unusual governing law, confidentiality/data-protection gaps). " +
+      "Because you only have summarized fields, if key clauses (obligations, termination, liability) are blank or too thin to assess, treat that itself as " +
+      "a finding (category \"Insufficient information\") and set overallAssessment to \"needs_review\" rather than guessing. " +
+      "Respond in " + langName + ". Return ONLY a JSON object (no markdown, no commentary) with: " +
+      "overallAssessment (exactly one of: favorable | balanced | unfavorable | needs_review), " +
+      "summary (2-3 sentence plain-language summary of your overall take), " +
+      "flags (array of objects, each with category (short label), severity (exactly one of: low | medium | high), finding (1-2 sentence description), " +
+      "recommendation (1 sentence suggested action) - empty array if you find nothing notable).\n\n" +
+      "Contract register details:\n\n" + facts;
+
+    return fetch("https://api.anthropic.com/v1/messages", {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        "x-api-key": key,
+        "anthropic-version": "2023-06-01",
+        "anthropic-dangerous-direct-browser-access": "true"
+      },
+      body: JSON.stringify({
+        model: CLAUDE_MODEL,
+        max_tokens: 1500,
+        messages: [{ role: "user", content: prompt }]
+      })
+    }).then(function (res) {
+      if (!res.ok) {
+        return res.json().catch(function () { return null; }).then(function (body) {
+          var msg = (body && body.error && body.error.message) || (res.status + " " + res.statusText);
+          throw new Error(msg);
+        });
+      }
+      return res.json();
+    }).then(function (data) {
+      var raw = (data.content && data.content[0] && data.content[0].text) || "";
+      var jsonMatch = raw.match(/\{[\s\S]*\}/);
+      if (!jsonMatch) throw new Error("Could not parse the AI response.");
+      var parsed = JSON.parse(jsonMatch[0]);
+      var overallAssessment = COMPLIANCE_ASSESSMENTS.indexOf(parsed.overallAssessment) !== -1 ? parsed.overallAssessment : "needs_review";
+      var summary = typeof parsed.summary === "string" ? parsed.summary.trim() : "";
+      var flags = Array.isArray(parsed.flags) ? parsed.flags.filter(function (f) { return f && typeof f === "object"; }).map(function (f) {
+        return {
+          category: typeof f.category === "string" ? f.category.trim().slice(0, 80) : "",
+          severity: COMPLIANCE_SEVERITIES.indexOf(f.severity) !== -1 ? f.severity : "medium",
+          finding: typeof f.finding === "string" ? f.finding.trim() : "",
+          recommendation: typeof f.recommendation === "string" ? f.recommendation.trim() : ""
+        };
+      }) : [];
+      return { overallAssessment: overallAssessment, summary: summary, flags: flags };
+    });
+  }
+
+  function complianceAssessmentLabel(a) {
+    return t("compliance_assessment_" + (COMPLIANCE_ASSESSMENTS.indexOf(a) !== -1 ? a : "needs_review"));
+  }
+  function complianceSeverityLabel(s) {
+    return t("compliance_severity_" + (COMPLIANCE_SEVERITIES.indexOf(s) !== -1 ? s : "medium"));
+  }
+  function complianceAssessmentPillClass(a) {
+    if (a === "favorable") return "risk-low";
+    if (a === "unfavorable") return "risk-critical";
+    if (a === "needs_review") return "risk-medium";
+    return "status-under-negotiation";
+  }
+  function complianceSeverityPillClass(s) {
+    if (s === "high") return "risk-critical";
+    if (s === "low") return "risk-low";
+    return "risk-medium";
+  }
+
+  function renderComplianceSectionInner(c) {
+    var a = c.analysis;
+    var hasKey = !!loadAiKey();
+    var body;
+    if (a) {
+      var flagsHtml = (a.flags && a.flags.length) ? a.flags.map(function (f) {
+        return '<div class="compliance-flag">' +
+          '<div class="compliance-flag-head"><span class="pill ' + complianceSeverityPillClass(f.severity) + '">' + esc(complianceSeverityLabel(f.severity)) + '</span><strong>' + esc(f.category || "") + "</strong></div>" +
+          '<div class="compliance-flag-finding">' + esc(f.finding || "") + "</div>" +
+          (f.recommendation ? '<div class="compliance-flag-rec"><strong>' + esc(t("compliance_recommendation_label")) + "</strong> " + esc(f.recommendation) + "</div>" : "") +
+        "</div>";
+      }).join("") : '<div class="addendum-empty">' + esc(t("compliance_no_flags")) + "</div>";
+      body = '<div class="compliance-result">' +
+        '<div class="compliance-result-head"><span class="pill ' + complianceAssessmentPillClass(a.overallAssessment) + '">' + esc(complianceAssessmentLabel(a.overallAssessment)) + '</span><span class="compliance-generated mono">' + esc(t("compliance_generated_prefix")) + " " + fmtDate(a.generatedAt ? a.generatedAt.slice(0, 10) : "") + "</span></div>" +
+        (a.summary ? '<p class="compliance-summary">' + esc(a.summary) + "</p>" : "") +
+        '<div class="compliance-flags">' + flagsHtml + "</div>" +
+        '<p class="compliance-disclaimer">' + esc(t("compliance_disclaimer")) + "</p>" +
+      "</div>";
+    } else {
+      body = '<p class="compliance-hint">' + esc(t("compliance_hint")) + "</p>";
+    }
+    return body +
+      '<div class="ai-draft-row">' +
+        '<button type="button" class="btn btn-ghost btn-sm" data-action="analyze-compliance" data-id="' + esc(c.id) + '">' + esc(a ? t("compliance_reanalyze_btn") : t("compliance_analyze_btn")) + "</button>" +
+        (!hasKey ? '<span class="ai-draft-hint">' + esc(t("ai_draft_hint_no_key")) + "</span>" : "") +
+      "</div>";
+  }
+
+  function renderComplianceSection(c) {
+    return '<div class="fieldset-title">' + esc(t("fs_compliance")) + "</div>" +
+      '<div id="compliance-section">' + renderComplianceSectionInner(c) + "</div>";
+  }
+
+  function setComplianceButtonBusy(busy) {
+    var btn = document.querySelector('[data-action="analyze-compliance"]');
+    if (btn) { btn.disabled = busy; if (busy) btn.textContent = t("compliance_analyzing"); }
+  }
+
+  function bindComplianceButton() {
+    var btn = document.querySelector('[data-action="analyze-compliance"]');
+    if (!btn) return;
+    btn.addEventListener("click", function () {
+      var id = btn.getAttribute("data-id");
+      var key = loadAiKey();
+      if (!key) { UI.modal = { mode: "ai-settings", returnTo: UI.modal }; render(); return; }
+      var c = STATE.contracts.find(function (x) { return x.id === id; });
+      if (!c) return;
+      setComplianceButtonBusy(true);
+      callComplianceAnalysis(key, c, UI.lang).then(function (analysis) {
+        analysis.generatedAt = new Date().toISOString();
+        var next = JSON.parse(JSON.stringify(STATE));
+        var idx = next.contracts.findIndex(function (x) { return x.id === id; });
+        if (idx !== -1) next.contracts[idx].analysis = analysis;
+        STATE = next;
+        saveState(STATE);
+        if (UI.modal && UI.modal.mode === "edit" && UI.modal.id === id) {
+          var section = document.getElementById("compliance-section");
+          if (section) {
+            section.innerHTML = renderComplianceSectionInner(next.contracts[idx]);
+            bindComplianceButton();
+          }
+        }
+        showToast(t("compliance_success"));
+      }).catch(function (err) {
+        setComplianceButtonBusy(false);
+        showToast(t("compliance_failed_prefix") + (err && err.message ? err.message : String(err)));
+      });
+    });
+  }
+
   function bindEvents() {
     document.querySelectorAll("[data-nav]").forEach(function (el) {
       el.addEventListener("click", function () {
@@ -2228,6 +2415,7 @@
     document.querySelectorAll('[data-action="generate-docx"]').forEach(function (el) {
       el.addEventListener("click", function () { generateAgreementDocx(el.getAttribute("data-id")); });
     });
+    bindComplianceButton();
     document.querySelectorAll('[data-action="delete"]').forEach(function (el) {
       el.addEventListener("click", function () { UI.modal = { mode: "delete", id: el.getAttribute("data-id") }; render(); });
     });
