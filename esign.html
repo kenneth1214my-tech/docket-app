@@ -1,0 +1,315 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Docket — Sign a document</title>
+<meta name="description" content="Initial and sign a contract, and send it back automatically.">
+<link rel="icon" type="image/png" href="logo.png">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Public+Sans:wght@400;500;600;700&family=IBM+Plex+Mono:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="style.css">
+<style>
+  :root {
+    --bg: #f5f6f8; --panel: #ffffff; --border: #dfe3e8; --text: #1c2430; --text-dim: #5b6673;
+    --accent: #2952e3; --accent-dim: #e8ecfd; --accent-text: #ffffff; --danger: #c0392b; --ok: #1e8e5a;
+    --field-fill: #fff3cd; --field-border: #b8860b;
+    --shadow: 0 1px 3px rgba(20,25,35,0.08), 0 1px 2px rgba(20,25,35,0.06);
+  }
+  * { box-sizing: border-box; }
+  html, body { margin: 0; padding: 0; background: var(--bg); color: var(--text); font-family: "Public Sans", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, Helvetica, Arial, sans-serif; }
+  .wrap { max-width: 1080px; margin: 0 auto; padding: 20px 16px 60px; }
+  header.app-header { text-align: center; margin-bottom: 18px; }
+  header.app-header h1 { font-size: 22px; margin: 0 0 4px; font-family: "Fraunces", serif; }
+  header.app-header p { color: var(--text-dim); font-size: 13.5px; margin: 0 auto; max-width: 640px; }
+  .steps { display: flex; justify-content: center; gap: 6px; margin: 18px 0 24px; flex-wrap: wrap; }
+  .step-pill { font-size: 12.5px; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border); color: var(--text-dim); background: var(--panel); display: flex; align-items: center; gap: 6px; }
+  .step-pill.active { border-color: var(--accent); color: var(--accent); font-weight: 600; }
+  .step-pill.done { color: var(--ok); border-color: var(--ok); }
+  .step-num { width: 18px; height: 18px; border-radius: 50%; background: var(--border); color: var(--text); font-size: 11px; display: flex; align-items: center; justify-content: center; }
+  .step-pill.active .step-num { background: var(--accent); color: var(--accent-text); }
+  .step-pill.done .step-num { background: var(--ok); color: var(--accent-text); }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 14px; padding: 22px; box-shadow: var(--shadow); margin-bottom: 16px; }
+  .card h2 { margin: 0 0 6px; font-size: 16.5px; }
+  .card .sub { color: var(--text-dim); font-size: 13px; margin: 0 0 16px; }
+  .dropzone { border: 2px dashed var(--border); border-radius: 12px; padding: 40px 20px; text-align: center; cursor: pointer; transition: border-color .15s, background .15s; }
+  .dropzone:hover, .dropzone.drag { border-color: var(--accent); background: var(--accent-dim); }
+  .dropzone .icon { font-size: 34px; margin-bottom: 8px; }
+  .dropzone .hint { color: var(--text-dim); font-size: 12.5px; margin-top: 6px; }
+  input[type="file"] { display: none; }
+  .btn { appearance: none; border: none; border-radius: 9px; padding: 10px 18px; font-size: 14px; font-weight: 600; cursor: pointer; transition: opacity .15s, transform .05s; }
+  .btn:active { transform: translateY(1px); }
+  .btn-primary { background: var(--accent); color: var(--accent-text); }
+  .btn-secondary { background: var(--accent-dim); color: var(--accent); }
+  .btn-ghost { background: transparent; color: var(--text-dim); border: 1px solid var(--border); }
+  .btn:disabled { opacity: 0.45; cursor: not-allowed; }
+  .btn-row { display: flex; gap: 10px; justify-content: flex-end; margin-top: 18px; flex-wrap: wrap; }
+  .btn-row.between { justify-content: space-between; }
+  .file-summary { display: flex; align-items: center; gap: 12px; padding: 12px 14px; background: var(--accent-dim); border-radius: 10px; font-size: 13.5px; margin-bottom: 16px; }
+  .file-summary .name { font-weight: 600; }
+  .file-summary .meta { color: var(--text-dim); font-size: 12.5px; }
+  .page-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr)); gap: 14px; margin-top: 4px; }
+  .page-card { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; background: var(--bg); display: flex; flex-direction: column; }
+  .page-canvas-wrap { position: relative; background: #fff; }
+  .page-canvas-wrap canvas { display: block; width: 100%; height: auto; }
+  .field-overlay { position: absolute; background: var(--field-fill); border: 1.5px solid var(--field-border); border-radius: 2px; opacity: 0.9; pointer-events: none; }
+  .field-overlay.disabled { opacity: 0.25; filter: grayscale(1); }
+  .page-controls { display: flex; align-items: center; justify-content: space-between; padding: 8px 10px; font-size: 12px; color: var(--text-dim); gap: 6px; }
+  .page-controls label { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .field-row { margin-bottom: 16px; }
+  .field-row label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
+  .field-row .helper { font-size: 12px; color: var(--text-dim); margin-top: 5px; }
+  .field-row input[type="text"], .field-row input[type="email"] { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 14px; }
+  .field-row input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
+  .sig-pad-wrap { border: 1px solid var(--border); border-radius: 10px; background: #fff; overflow: hidden; touch-action: none; position: relative; height: 160px; }
+  .sig-pad-wrap canvas { display: block; width: 100%; height: 160px; cursor: crosshair; position: absolute; top: 0; left: 0; background: transparent; }
+  .sig-pad-hint-line { position: absolute; left: 16px; right: 16px; bottom: 26px; border-top: 1px solid #c7cdd6; pointer-events: none; }
+  .sig-pad-hint-text { position: absolute; left: 16px; bottom: 8px; font-size: 11px; color: #c7cdd6; pointer-events: none; }
+  .sig-tools { display: flex; gap: 8px; margin-top: 8px; }
+  .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 22px; }
+  @media (max-width: 720px) { .two-col { grid-template-columns: 1fr; } }
+  .note { font-size: 12.5px; color: var(--text-dim); background: var(--accent-dim); border-radius: 8px; padding: 10px 12px; margin-top: 4px; }
+  .status-line { font-size: 13px; color: var(--text-dim); margin-top: 10px; min-height: 18px; }
+  .status-line.ok { color: var(--ok); }
+  .status-line.err { color: var(--danger); }
+  .cert-preview { border: 1px dashed var(--border); border-radius: 10px; padding: 16px; font-size: 12.5px; color: var(--text-dim); background: var(--bg); }
+  .cert-preview b { color: var(--text); }
+  .cert-preview .sig-thumb { max-width: 220px; max-height: 70px; margin-top: 6px; background: #fff; border-radius: 4px; border: 1px solid var(--border); }
+  a.reset-link { color: var(--text-dim); font-size: 12.5px; text-decoration: underline; cursor: pointer; }
+  .place-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 12px; }
+  .place-row select { padding: 7px 10px; border-radius: 7px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 13px; }
+  .place-row .slider-group { display: flex; align-items: center; gap: 8px; font-size: 12.5px; color: var(--text-dim); }
+  .place-row input[type="range"] { width: 120px; }
+  .toggle-group { display: inline-flex; border: 1px solid var(--border); border-radius: 8px; overflow: hidden; }
+  .toggle-btn { appearance: none; border: none; background: var(--panel); color: var(--text-dim); font-size: 12.5px; padding: 7px 12px; cursor: pointer; border-right: 1px solid var(--border); }
+  .toggle-btn:last-child { border-right: none; }
+  .toggle-btn.active { background: var(--accent-dim); color: var(--accent); font-weight: 600; }
+  .big-preview-wrap { position: relative; background: #fff; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; max-width: 620px; margin: 0 auto; touch-action: none; }
+  .big-preview-wrap canvas { display: block; width: 100%; height: auto; }
+  .drag-marker { position: absolute; cursor: grab; user-select: none; display: flex; align-items: center; justify-content: center; border: 1.5px dashed var(--accent); background: rgba(41,82,227,0.08); border-radius: 4px; }
+  .drag-marker:active { cursor: grabbing; }
+  .drag-marker img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
+  .drag-marker .placeholder-label { font-size: 10.5px; color: var(--accent); font-weight: 600; pointer-events: none; white-space: nowrap; }
+  .drag-marker.date-marker { border-color: var(--field-border); background: rgba(184,134,11,0.1); }
+  .drag-marker .date-text { font-size: 11px; color: #2a2a2a; pointer-events: none; white-space: nowrap; }
+  .drag-marker.name-marker { border-color: var(--ok); background: rgba(30,142,90,0.1); }
+  .drag-marker .name-text { font-size: 11px; color: #1c2430; font-weight: 600; pointer-events: none; white-space: nowrap; }
+  .place-hint { font-size: 12px; color: var(--text-dim); text-align: center; margin-top: 8px; }
+  .doc-row { display: flex; align-items: center; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--border); cursor: pointer; border-radius: 8px; }
+  .doc-row:hover { background: var(--accent-dim); }
+  .doc-row:last-child { border-bottom: none; }
+  .doc-row .doc-icon { font-size: 20px; flex-shrink: 0; }
+  .doc-row .doc-main { flex: 1; min-width: 0; }
+  .doc-row .doc-name { font-weight: 600; font-size: 14px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .doc-row .doc-meta { font-size: 12px; color: var(--text-dim); margin-top: 2px; }
+  .doc-badge { font-size: 11px; font-weight: 600; padding: 3px 9px; border-radius: 999px; white-space: nowrap; flex-shrink: 0; }
+  .doc-badge.awaiting { background: var(--field-fill); color: var(--field-border); }
+  .doc-badge.signed { background: var(--accent-dim); color: var(--accent); }
+  .doc-badge.completed { background: rgba(30,142,90,0.12); color: var(--ok); }
+  .doc-empty { text-align: center; padding: 30px 10px; color: var(--text-dim); font-size: 13.5px; }
+  .email-fallback { margin-top: 10px; padding: 12px; border: 1px solid var(--border); border-radius: 10px; background: var(--bg); }
+  .email-fallback .ef-hint { font-size: 12px; color: var(--text-dim); margin-bottom: 8px; }
+  .email-fallback textarea { width: 100%; min-height: 90px; resize: vertical; font-size: 12.5px; padding: 8px 10px; border-radius: 8px; border: 1px solid var(--border); background: var(--panel); color: var(--text); box-sizing: border-box; }
+  .email-fallback .ef-actions { display: flex; justify-content: flex-end; margin-top: 8px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header class="app-header">
+    <h1>✍️ Sign a document</h1>
+    <p>Part of Docket. Initials and signatures are sent between preparer and receiver by real, server-sent email — you'll see the true delivery status, not a guess.</p>
+    <a class="reset-link" id="allDocsLink" style="display:none;">← All documents</a>
+    <div><a class="reset-link" href="index.html">← Back to Docket</a></div>
+  </header>
+
+  <div class="steps" id="stepPills"></div>
+
+  <div class="card" id="step1">
+    <h2>1. Upload the document</h2>
+    <p class="sub">Choose the PDF the receiver needs to initial and sign.</p>
+    <div class="dropzone" id="dropzone">
+      <div class="icon">📄</div>
+      <div><strong>Click to choose a PDF</strong>, or drag one here</div>
+      <input type="file" id="fileInput" accept="application/pdf">
+    </div>
+    <div class="status-line" id="uploadStatus"></div>
+  </div>
+
+  <div class="card" id="step2" style="display:none;">
+    <h2>2. Confirm where initials go</h2>
+    <p class="sub">An initial box is placed bottom-right on every page by default. Untick any page that shouldn't be initialed (e.g. a cover page).</p>
+    <div class="file-summary" id="fileSummary"></div>
+    <div class="field-row">
+      <label for="receiverEmailInput">Receiver's email</label>
+      <input type="email" id="receiverEmailInput" placeholder="e.g. receiver@example.com">
+      <div class="helper">They'll get a real email with a signing link the moment you send this.</div>
+    </div>
+    <div class="field-row">
+      <label for="preparerEmailInput">Your email (for the "receiver signed" notification)</label>
+      <input type="email" id="preparerEmailInput" placeholder="e.g. you@kingston.edu.sg">
+    </div>
+    <label class="check" style="display:flex;align-items:center;gap:6px;margin-bottom:12px;font-size:12.5px;color:var(--text-dim);"><input type="checkbox" id="includePageStamp" checked> Also stamp a page number + date next to the initials on each selected page</label>
+    <div class="page-grid" id="pageGrid"></div>
+    <div class="btn-row between">
+      <button class="btn btn-ghost" id="backTo1">← Choose a different file</button>
+      <button class="btn btn-primary" id="toStep3">Continue to signing →</button>
+    </div>
+  </div>
+
+  <div class="card" id="step3" style="display:none;">
+    <h2>3. Sign as each role</h2>
+    <p class="sub">Two roles: the preparer, and the receiver — who also approves, so their name and signature land in both the "Approved by" spot and the final signature page.</p>
+    <div class="steps" id="roleTabs" style="margin:0 0 18px;"></div>
+    <div id="roleReceiverExtra" style="display:none;">
+      <div id="receiverPrepareNote" class="note" style="display:none;">
+        This tab is for <b>positioning</b> where the receiver's name, initials and signature will go — leave it blank and drag the markers below into place. The receiver fills in their own details after you send this.
+      </div>
+      <div class="field-row">
+        <label for="initialsInput">Receiver initials <span id="pageCountLabel" style="font-weight:400;color:var(--text-dim);"></span></label>
+        <input type="text" id="initialsInput" placeholder="e.g. KS" maxlength="6">
+      </div>
+    </div>
+    <div class="two-col">
+      <div>
+        <div class="field-row">
+          <label id="nameFieldLabel" for="roleNameInput">Name</label>
+          <input type="text" id="roleNameInput" placeholder="e.g. Kenneth Soo" maxlength="80">
+        </div>
+        <div class="helper" id="dateAutoNote">Today's date (<span id="todayDisplaySpan"></span>) is stamped automatically — drag it into place below.</div>
+      </div>
+      <div>
+        <div class="field-row">
+          <label id="sigPadLabel">Draw signature</label>
+          <div class="sig-pad-wrap">
+            <canvas id="sigCanvas"></canvas>
+            <div class="sig-pad-hint-line"></div>
+            <div class="sig-pad-hint-text">Sign above the line</div>
+          </div>
+          <div class="sig-tools">
+            <button class="btn btn-ghost" id="clearSig">Clear</button>
+            <span class="helper" style="align-self:center;">Draw with mouse or finger.</span>
+          </div>
+        </div>
+      </div>
+    </div>
+    <hr style="border:none;border-top:1px solid var(--border);margin:22px 0;">
+    <h2 style="font-size:15px;">Position on the document</h2>
+    <div class="place-row" id="placementToggleRow" style="display:none;">
+      <span style="font-size:13px;font-weight:600;">Positioning:</span>
+      <div class="toggle-group">
+        <button type="button" class="toggle-btn active" id="placeApprovedBtn">Approved-by signature</button>
+        <button type="button" class="toggle-btn" id="placeFinalBtn">Final-page signature</button>
+      </div>
+    </div>
+    <div class="place-row">
+      <label for="sigPageSelect" style="font-size:13px;font-weight:600;">Page:</label>
+      <select id="sigPageSelect"></select>
+      <div class="slider-group">Signature size<input type="range" id="sigSizeSlider" min="70" max="260" value="120"></div>
+    </div>
+    <div class="big-preview-wrap" id="bigPreviewWrap">
+      <canvas id="bigPreviewCanvas"></canvas>
+      <div class="drag-marker" id="sigMarker"><span class="placeholder-label">Draw a signature above, then drag me here</span></div>
+      <div class="drag-marker name-marker" id="nameMarker"><span class="name-text" id="nameMarkerText">Name</span></div>
+      <div class="drag-marker date-marker" id="dateMarker"><span class="date-text" id="dateMarkerText"></span></div>
+    </div>
+    <div class="place-hint">Tip: the signature, name and date markers are independent — drag each one separately.</div>
+    <div class="note">A one-page completion certificate (all names, signatures, timestamps and a document fingerprint) is also appended to the end of the file as an audit record.</div>
+    <div class="btn-row between">
+      <button class="btn btn-ghost" id="roleBackBtn">← Back</button>
+      <button class="btn btn-primary" id="roleNextBtn">Next →</button>
+    </div>
+  </div>
+
+  <div class="card" id="step4" style="display:none;">
+    <h2>4. Review &amp; finish</h2>
+    <p class="sub" id="step4Subtitle"></p>
+    <div class="cert-preview" id="certPreview"></div>
+    <div id="receiverSubmitNote" class="note" style="display:none;">This sends your signature, initials and name back to the preparer by real email — they'll review it and send you the final locked copy once it's confirmed.</div>
+    <div class="status-line" id="genStatus"></div>
+    <div class="btn-row between">
+      <button class="btn btn-ghost" id="backTo3">← Back</button>
+      <button class="btn btn-primary" id="sendToReceiverBtn" style="display:none;">Send to receiver →</button>
+      <button class="btn btn-primary" id="completeBtn" style="display:none;">Complete &amp; download PDF</button>
+    </div>
+    <div style="text-align:center; margin-top:14px;">
+      <a class="reset-link" id="completeLocallyLink" style="display:none;">or complete it myself right now instead</a>
+      <a class="reset-link" id="startOverLink">Start over with a different file</a>
+    </div>
+  </div>
+
+  <div class="card" id="modeDashboard" style="display:none;">
+    <h2>📁 Your documents</h2>
+    <p class="sub">Documents you've prepared or sent, most recent first.</p>
+    <div class="status-line" id="dashboardStatus"></div>
+    <div id="dashboardList"></div>
+    <div class="btn-row between" style="margin-top:16px;"><span></span><button class="btn btn-primary" id="dashboardNewBtn">+ Prepare a new document</button></div>
+  </div>
+
+  <div class="card" id="modeAwaiting" style="display:none;">
+    <h2>⏳ Waiting for the receiver</h2>
+    <p class="sub" id="awaitingSummary"></p>
+    <div class="btn-row between" id="awaitingEmailRow" style="display:none;"><span></span><a class="btn btn-secondary" id="awaitingEmailBtn" style="text-decoration:none;">✉️ Open email to send this link</a></div>
+    <div id="awaitingEmailFallback" style="display:none;"></div>
+    <div class="btn-row between">
+      <button class="btn btn-ghost" id="awaitingCancelBtn">Cancel &amp; start over</button>
+      <button class="btn btn-primary" id="awaitingEditBtn">Edit fields instead</button>
+    </div>
+  </div>
+
+  <div class="card" id="modeReceiverIntro" style="display:none;">
+    <h2>✍️ A document is waiting for your signature</h2>
+    <p class="sub" id="receiverIntroSummary"></p>
+    <div class="status-line" id="receiverLoadStatus"></div>
+    <div class="btn-row between"><span></span><button class="btn btn-primary" id="receiverBeginBtn" disabled>Begin signing →</button></div>
+  </div>
+
+  <div class="card" id="modeReceiverSubmitted" style="display:none;">
+    <h2>✅ Signed &amp; sent back</h2>
+    <p class="sub" id="receiverSubmittedSummary"></p>
+    <div class="btn-row between" id="receiverSubmittedEmailRow" style="display:none;"><span></span><a class="btn btn-secondary" id="receiverSubmittedEmailBtn" style="text-decoration:none;">✉️ Notify the preparer manually</a></div>
+    <div id="receiverSubmittedEmailFallback" style="display:none;"></div>
+  </div>
+
+  <div class="card" id="modeReviewFinalize" style="display:none;">
+    <h2>📝 Receiver has signed — review &amp; finalize</h2>
+    <div class="cert-preview" id="reviewFinalizeSummary"></div>
+    <div class="status-line" id="finalizeStatus"></div>
+    <div class="btn-row between">
+      <button class="btn btn-ghost" id="finalizeCancelBtn">Cancel &amp; start over</button>
+      <button class="btn btn-primary" id="finalizeBtn">Finalize &amp; lock final copy →</button>
+    </div>
+  </div>
+
+  <div class="card" id="modeCompleted" style="display:none;">
+    <h2>✅ Completed</h2>
+    <div class="cert-preview" id="completedSummary"></div>
+    <div class="btn-row between" id="completedEmailRow" style="display:none;"><span></span><a class="btn btn-secondary" id="completedEmailBtn" style="text-decoration:none;">✉️ Email the receiver their copy</a></div>
+    <div id="completedEmailFallback" style="display:none;"></div>
+    <div class="status-line" id="completedStatus"></div>
+    <div class="btn-row between">
+      <button class="btn btn-ghost" id="completedStartOverBtn" style="display:none;">Prepare a new document</button>
+      <button class="btn btn-primary" id="completedDownloadBtn">Download completed PDF</button>
+    </div>
+  </div>
+
+  <div class="card" id="modeLoggedOut" style="display:none;">
+    <h2>Sign in required</h2>
+    <p class="sub">Preparing a new document requires signing in to Docket first.</p>
+    <a class="btn btn-primary" href="index.html" style="text-decoration:none;">Go to Docket sign-in</a>
+  </div>
+</div>
+
+<script src="https://cdn.jsdelivr.net/npm/pdf-lib@1.17.1/dist/pdf-lib.min.js"></script>
+<script type="module">
+  import * as pdfjsLib from "https://cdn.jsdelivr.net/npm/pdfjs-dist@4/build/pdf.min.mjs";
+  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdn.jsdelivr.net/npm/pdfjs-dist@4/build/pdf.worker.min.mjs";
+  window.pdfjsLib = pdfjsLib;
+</script>
+<script type="module">
+  import { upload } from "https://esm.sh/@vercel/blob@2/client";
+  window.VercelBlobUpload = upload;
+</script>
+<script src="esign.js"></script>
+</body>
+</html>
