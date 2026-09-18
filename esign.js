@@ -395,12 +395,12 @@
     }
   }
   function updateRoleNextButton() {
-    var order = state.receiverOnlyMode ? ["receiver"] : SIGNER_TABS;
-    var idx = order.indexOf(state.activeBlockKey);
     var btn = document.getElementById("roleNextBtn");
-    if (idx < order.length - 1) btn.textContent = "Next: Receiver →";
-    else if (state.receiverOnlyMode) btn.textContent = "Review & complete →";
-    else btn.textContent = "Review & send →";
+    // The receiver tab (when not receiverOnlyMode) is only ever visited by
+    // choice, to reposition where the receiver's fields will land - it's
+    // never a forced stop on the way to sending, so "Next" means the same
+    // thing ("go review and send") from either tab.
+    btn.textContent = state.receiverOnlyMode ? "Review & complete →" : "Review & send →";
   }
   document.getElementById("roleBackBtn").addEventListener("click", function () {
     saveCurrentRoleInputs();
@@ -413,10 +413,10 @@
     var identity = getIdentityBlock(); var key = state.activeBlockKey;
     var mustSignNow = key === "preparer" || state.receiverOnlyMode;
     if (mustSignNow && !identity.hasStrokes) { alert('Please draw a signature for "' + (key === "receiver" ? "Receiver" : identity.label) + '" before continuing.'); return; }
-    var order = state.receiverOnlyMode ? ["receiver"] : SIGNER_TABS;
-    var idx = order.indexOf(key);
-    if (idx < order.length - 1) { switchRole(order[idx + 1]); return; }
     if (state.receiverOnlyMode && !state.blocks.receiver.initials) { alert("Please enter the receiver's initials before continuing."); return; }
+    // Preparer flow: signing (or optionally repositioning the receiver's
+    // fields) always goes straight to Review & Send from here - it never
+    // forces a stop on the other tab first.
     goToStep(4);
   });
 
