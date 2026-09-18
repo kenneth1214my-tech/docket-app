@@ -610,7 +610,8 @@
         originalBlobUrl: blobUrl, pageIncluded: state.pageIncluded, includePageStamp: state.includePageStamp,
         blocks: state.blocks, receiverEmail: receiverEmail, preparerEmail: preparerEmail
       };
-      var result = await apiPost("/api/esign-create", payload);
+      payload.action = "create";
+      var result = await apiPost("/api/esign", payload);
       state.currentDocId = result.id;
       setStatus("genStatus", result.emailSent
         ? "Sent ✓ — the receiver has been emailed."
@@ -668,7 +669,7 @@
     try {
       saveCurrentRoleInputs();
       var rBlock = state.blocks.receiver;
-      var result = await apiPost("/api/esign-submit", { id: state.currentDocId, receiver: rBlock });
+      var result = await apiPost("/api/esign", { action: "submit", id: state.currentDocId, receiver: rBlock });
       setStatus("genStatus", "", "");
       showReceiverSubmittedMode(rBlock, result.emailSent, result.emailReason);
     } catch (err) {
@@ -846,7 +847,7 @@
     setStatus("dashboardStatus", "Loading…");
     var list = document.getElementById("dashboardList"); list.innerHTML = "";
     try {
-      var res = await apiGet("/api/esign-list");
+      var res = await apiGet("/api/esign?action=list");
       setStatus("dashboardStatus", "", "");
       if (!res.documents.length) { list.innerHTML = '<div class="doc-empty">No documents yet — prepare your first one below.</div>'; return; }
       res.documents.forEach(function (d) {
@@ -879,13 +880,13 @@
     var btn = document.getElementById("finalizeBtn"); btn.disabled = true;
     setStatus("finalizeStatus", "Building the final locked copy…");
     try {
-      var data = await apiGet("/api/esign-get?id=" + encodeURIComponent(state.currentDocId));
+      var data = await apiGet("/api/esign?id=" + encodeURIComponent(state.currentDocId));
       var bytes = await fetchAssetBytes(data.originalBlobUrl);
       await loadPreparedDocumentIntoState(data, bytes);
       var finalBytes = await buildSignedPdf();
       setStatus("finalizeStatus", "Uploading the final copy…");
       var finalUrl = await uploadFileToBackend(new Blob([finalBytes], { type: "application/pdf" }), state.fileName);
-      var result = await apiPost("/api/esign-finalize", { id: state.currentDocId, finalBlobUrl: finalUrl });
+      var result = await apiPost("/api/esign", { action: "finalize", id: state.currentDocId, finalBlobUrl: finalUrl });
       var merged = Object.assign({}, data, { status: "completed", finalBlobUrl: finalUrl, completedAt: new Date().toISOString() });
       setStatus("finalizeStatus", result.emailSent ? "Finalized ✓ — receiver notified by email." : "Finalized ✓ — but the automatic email didn't go out (" + (result.emailReason || "unknown reason") + "). Use the copy box below.", "ok");
       await showCompletedMode(merged, true, result.emailSent, result.emailReason);
@@ -938,19 +939,19 @@
 
   document.getElementById("awaitingCancelBtn").addEventListener("click", async function () {
     if (!confirm("Cancel this document and start over? The receiver's link will stop working.")) return;
-    try { await apiPost("/api/esign-cancel", { id: state.currentDocId }); } catch (e) { console.error(e); }
+    try { await apiPost("/api/esign", { action: "cancel", id: state.currentDocId }); } catch (e) { console.error(e); }
     goToDashboard();
   });
   document.getElementById("finalizeCancelBtn").addEventListener("click", async function () {
     if (!confirm("Cancel this document and start over? The receiver's signing will be discarded.")) return;
-    try { await apiPost("/api/esign-cancel", { id: state.currentDocId }); } catch (e) { console.error(e); }
+    try { await apiPost("/api/esign", { action: "cancel", id: state.currentDocId }); } catch (e) { console.error(e); }
     goToDashboard();
   });
   document.getElementById("completedStartOverBtn").addEventListener("click", function () { document.getElementById("startOverLink").click(); });
   document.getElementById("awaitingEditBtn").addEventListener("click", async function () {
     setStatus("genStatus", "", "");
     try {
-      var data = await apiGet("/api/esign-get?id=" + encodeURIComponent(state.currentDocId));
+      var data = await apiGet("/api/esign?id=" + encodeURIComponent(state.currentDocId));
       var bytes = await fetchAssetBytes(data.originalBlobUrl);
       await loadPreparedDocumentIntoState(data, bytes);
       document.getElementById("receiverEmailInput").value = data.receiverEmail || "";
@@ -977,7 +978,7 @@
     }
     state.currentDocId = id;
     try {
-      var data = await apiGet("/api/esign-get?id=" + encodeURIComponent(id));
+      var data = await apiGet("/api/esign?id=" + encodeURIComponent(id));
       var isOwner = !!session;
       if (data.status === "awaiting_receiver") {
         if (isOwner) showAwaitingOwnerMode(data);
