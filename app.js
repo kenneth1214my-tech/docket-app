@@ -813,6 +813,7 @@
           '<button class="nav-item' + (UI.view === "dashboard" ? " active" : "") + '" data-nav="dashboard">' + navIcon("dashboard") + esc(t("nav_dashboard")) + "</button>" +
           '<button class="nav-item' + (UI.view === "register" ? " active" : "") + '" data-nav="register">' + navIcon("register") + esc(t("nav_contracts")) + "</button>" +
           '<button class="nav-item' + (UI.view === "accounts" ? " active" : "") + '" data-nav="accounts">' + navIcon("accounts") + esc(t("nav_accounts")) + "</button>" +
+          '<a class="nav-item" href="esign.html" style="text-decoration:none;"><svg viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.6"><path d="M3 15.5l1-3.3L12.7 3.5a1.4 1.4 0 012 2L6 14.2l-3 1.3z" stroke-linejoin="round" stroke-linecap="round"/><path d="M3 17.5h14" stroke-linecap="round"/></svg>Sign a document</a>' +
         "</nav>" +
         '<div class="sidebar-foot">' +
           '<div class="current-user">' + esc(t("logged_in_as")) + " <strong>" + esc(CURRENT_USER.name || CURRENT_USER.email || t("login_emergency_title")) + "</strong>" +
