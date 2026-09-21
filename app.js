@@ -832,6 +832,7 @@
             '<button class="link-btn" data-action="logout">' + esc(t("logout_btn")) + "</button>" +
           "</div>" +
           '<div class="app-credit">' + esc(t("credit_by")) + " Kenneth SOO</div>" +
+          '<div class="app-credit">© SMT-Finance. All rights reserved.</div>' +
         "</div>" +
       "</div>"
     );
@@ -2980,6 +2981,7 @@
           '<button type="button" class="link-btn login-forgot-link" data-action="login-forgot">' + esc(t("forgot_password_link")) + "</button>" +
           '<button type="button" class="link-btn login-back-link" data-action="login-use-personal">' + esc(t("login_use_personal_link")) + "</button>" +
           '<div class="app-credit">' + esc(t("credit_by")) + " Kenneth SOO</div>" +
+          '<div class="app-credit">© SMT-Finance. All rights reserved.</div>' +
         "</div></div>"
       );
     }
@@ -2997,6 +2999,7 @@
         '<div class="login-hint">' + esc(t("login_forgot_personal_hint")) + "</div>" +
         '<button type="button" class="link-btn login-forgot-link" data-action="login-use-emergency">' + esc(t("login_use_emergency_link")) + "</button>" +
         '<div class="app-credit">' + esc(t("credit_by")) + " Kenneth SOO</div>" +
+        '<div class="app-credit">© SMT-Finance. All rights reserved.</div>' +
       "</div></div>"
     );
   }
