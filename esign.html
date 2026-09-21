@@ -89,6 +89,7 @@
   .big-preview-wrap canvas { display: block; width: 100%; height: auto; }
   .drag-marker { position: absolute; cursor: grab; user-select: none; display: flex; align-items: center; justify-content: center; border: 1.5px dashed var(--accent); background: rgba(41,82,227,0.08); border-radius: 4px; }
   .drag-marker:active { cursor: grabbing; }
+  .big-preview-wrap.read-only .drag-marker { cursor: default; }
   .drag-marker img { width: 100%; height: 100%; object-fit: contain; pointer-events: none; }
   .drag-marker .placeholder-label { font-size: 10.5px; color: var(--accent); font-weight: 600; pointer-events: none; white-space: nowrap; }
   .drag-marker.date-marker { border-color: var(--field-border); background: rgba(184,134,11,0.1); }
@@ -213,7 +214,7 @@
       </div>
     </div>
     <hr style="border:none;border-top:1px solid var(--border);margin:22px 0;">
-    <h2 style="font-size:15px;">Position on the document</h2>
+    <h2 style="font-size:15px;" id="positionSectionTitle">Position on the document</h2>
     <div class="place-row" id="placementToggleRow" style="display:none;">
       <span style="font-size:13px;font-weight:600;">Positioning:</span>
       <div class="toggle-group">
@@ -221,7 +222,7 @@
         <button type="button" class="toggle-btn" id="placeFinalBtn">Final-page signature</button>
       </div>
     </div>
-    <div class="place-row">
+    <div class="place-row" id="pageSizeControlsRow">
       <label for="sigPageSelect" style="font-size:13px;font-weight:600;">Page:</label>
       <select id="sigPageSelect"></select>
       <div class="slider-group">Signature size<input type="range" id="sigSizeSlider" min="70" max="260" value="120"></div>
@@ -233,7 +234,7 @@
       <div class="drag-marker date-marker" id="dateMarker"><span class="date-text" id="dateMarkerText"></span></div>
       <div class="drag-marker title-marker" id="titleMarker" style="display:none;"><span class="title-text" id="titleMarkerText">Title</span></div>
     </div>
-    <div class="place-hint">Tip: the signature, name, title and date markers are independent — drag each one separately.</div>
+    <div class="place-hint" id="placeHintText">Tip: the signature, name, title and date markers are independent — drag each one separately.</div>
     <div class="note">A one-page completion certificate (all names, signatures, timestamps and a document fingerprint) is also appended to the end of the file as an audit record.</div>
     <div class="btn-row between">
       <button class="btn btn-ghost" id="roleBackBtn">← Back</button>

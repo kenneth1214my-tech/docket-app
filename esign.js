@@ -392,8 +392,16 @@
     document.getElementById("sigPadLabel").textContent = receiverIsOptionalHere ? "Draw signature (optional — just for previewing placement)" : (preparerIsOptionalHere ? "Draw signature (optional — only if you're also signing)" : "Draw signature");
     document.getElementById("placementToggleRow").style.display = key === "receiver" ? "" : "none";
     document.getElementById("includeTitleCheck").checked = !!identity.includeTitle;
+    document.getElementById("includeTitleCheck").style.display = state.receiverOnlyMode ? "none" : "";
     document.getElementById("titleFieldRow").style.display = identity.includeTitle ? "" : "none";
     document.getElementById("roleTitleInput").value = identity.titleValue || "";
+    // The preparer fixes every field's position before sending; the
+    // receiver only ever sees a read-only preview of where their own
+    // fields will land, with no page/size controls and no drag hint.
+    document.getElementById("pageSizeControlsRow").style.display = state.receiverOnlyMode ? "none" : "";
+    document.getElementById("placeHintText").style.display = state.receiverOnlyMode ? "none" : "";
+    document.getElementById("positionSectionTitle").textContent = state.receiverOnlyMode ? "Where you'll sign" : "Position on the document";
+    document.getElementById("bigPreviewWrap").classList.toggle("read-only", state.receiverOnlyMode);
     updatePlacementToggleButtons();
     loadSignatureIntoPad(identity.sigDataUrl);
     updateRoleNextButton();
@@ -507,7 +515,13 @@
   }
   function makeMarkerDraggable(el, posKey, boxWKey, boxHKey) {
     var dragging = false, startPx = null, startPos = null;
-    function onDown(e) { dragging = true; var p = e.touches ? e.touches[0] : e; startPx = { x: p.clientX, y: p.clientY }; startPos = { x: getPositionBlock()[posKey].x, y: getPositionBlock()[posKey].y }; e.preventDefault(); }
+    function onDown(e) {
+      // The receiver signs at whatever spot the preparer already fixed -
+      // dragging is a preparer-only capability, so the receiver's view of
+      // these same markers is read-only.
+      if (state.receiverOnlyMode) return;
+      dragging = true; var p = e.touches ? e.touches[0] : e; startPx = { x: p.clientX, y: p.clientY }; startPos = { x: getPositionBlock()[posKey].x, y: getPositionBlock()[posKey].y }; e.preventDefault();
+    }
     function onMove(e) {
       if (!dragging) return;
       var p = e.touches ? e.touches[0] : e;
