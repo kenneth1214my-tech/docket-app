@@ -41,7 +41,7 @@
   };
 
   function blankBlock(label) {
-    return { label: label, pageIndex: 0, nameValue: "", initials: "", sigDataUrl: null, hasStrokes: false, signedAt: null,
+    return { label: label, pageIndex: 0, nameValue: "", initials: "", initialsDataUrl: null, sigDataUrl: null, hasStrokes: false, signedAt: null,
       namePos: null, sigPos: null, datePos: null, nameBoxW: 130, nameBoxH: 14, sigBoxW: 120, sigBoxH: 34, dateBoxW: 80, dateBoxH: 14,
       includeTitle: false, titleValue: "", titlePos: null, titleBoxW: 110, titleBoxH: 14 };
   }
@@ -254,6 +254,7 @@
     approver: ["approved by", "reviewed by", "authorized by", "acknowledged by"]
   };
   var DATE_LABEL_KEYWORDS = ["date", "dated", "signed on"];
+  var TITLE_LABEL_KEYWORDS = ["title", "designation", "position"];
 
   function formatDateDisplay(d) { d = d || new Date(); return d.getDate() + "/" + (d.getMonth() + 1) + "/" + d.getFullYear(); }
   function todayDisplay() { return formatDateDisplay(new Date()); }
@@ -341,9 +342,9 @@
           Math.abs(it.transform[4] - lx) < 100 && it.transform[5] < ly;
       });
       if (dateItem) { dateX = dateItem.transform[4]; dateY = dateItem.transform[5] - 2; }
-      var titleX = nameX, titleY = nameY - 20;
+      var titleX = nameX, titleY = nameY - 36; // below the date's own fallback (nameY - 20), so the two never collide when neither label is found
       var titleItem = content.items.find(function (it) {
-        return it.str && it.str.toLowerCase().includes("title") &&
+        return it.str && TITLE_LABEL_KEYWORDS.some(function (tk) { return it.str.toLowerCase().includes(tk); }) &&
           Math.abs(it.transform[4] - lx) < 100 && it.transform[5] < ly;
       });
       if (titleItem) { titleX = titleItem.transform[4]; titleY = titleItem.transform[5] - 2; }
@@ -400,7 +401,7 @@
     document.getElementById("sigPadLabel").textContent = preparerIsOptionalHere ? "Draw signature (optional — only if you're also signing)" : "Draw signature";
     document.getElementById("placementToggleRow").style.display = key === "receiver" ? "" : "none";
     document.getElementById("includeTitleCheck").checked = !!identity.includeTitle;
-    document.getElementById("includeTitleCheck").style.display = state.receiverOnlyMode ? "none" : "";
+    document.getElementById("includeTitleCheckRow").style.display = state.receiverOnlyMode ? "none" : "";
     document.getElementById("titleFieldRow").style.display = identity.includeTitle ? "" : "none";
     document.getElementById("roleTitleInput").value = identity.titleValue || "";
     // The preparer fixes every field's position before sending; the
@@ -412,6 +413,7 @@
     document.getElementById("bigPreviewWrap").classList.toggle("read-only", state.receiverOnlyMode);
     updatePlacementToggleButtons();
     loadSignatureIntoPad(identity.sigDataUrl);
+    if (key === "receiver") loadInitialsIntoPad(identity.initialsDataUrl || null); else clearInitialsPadVisual();
     updateRoleNextButton();
     syncPositionControlsToBlock();
     renderBigPreview(getPositionBlock().pageIndex);
@@ -441,9 +443,10 @@
     if (!sigHasStrokes) identity.signedAt = null;
     if (key === "receiver") {
       identity.initials = document.getElementById("initialsInput").value.trim();
+      identity.initialsDataUrl = initialsHasStrokes ? initialsCanvas.toDataURL("image/png") : null;
       var approver = state.blocks.approver;
       approver.nameValue = name; approver.hasStrokes = sigHasStrokes; approver.sigDataUrl = identity.sigDataUrl;
-      approver.initials = identity.initials; approver.signedAt = identity.signedAt;
+      approver.initials = identity.initials; approver.initialsDataUrl = identity.initialsDataUrl; approver.signedAt = identity.signedAt;
       approver.titleValue = titleValue; approver.includeTitle = includeTitle;
     }
   }
@@ -590,11 +593,54 @@
   window.addEventListener("resize", function () { if (state.step === 3) sizeSigCanvas(); });
   document.getElementById("backTo3").addEventListener("click", function () { goToStep(3); });
 
+  // ---------- initials drawing pad (mirrors the signature pad above; kept
+  // as its own separate canvas/state rather than reusing sigCanvas so
+  // signing and initialing never clobber each other) ----------
+  var initialsCanvas = document.getElementById("initialsCanvas");
+  var initialsCtx = initialsCanvas.getContext("2d");
+  var initialsHasStrokes = false, drawingInitials = false, lastInitialsPt = null;
+  function sizeInitialsCanvas() {
+    var rect = initialsCanvas.getBoundingClientRect();
+    if (!rect.width || !rect.height) return; // hidden (e.g. preparer's positioning-only view) - nothing to size yet
+    var dpr = window.devicePixelRatio || 1;
+    initialsCanvas.width = rect.width * dpr; initialsCanvas.height = rect.height * dpr;
+    initialsCtx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    loadInitialsIntoPad(state.receiverOnlyMode && getIdentityBlock() ? getIdentityBlock().initialsDataUrl : null);
+  }
+  function clearInitialsPadVisual() { initialsCtx.save(); initialsCtx.setTransform(1, 0, 0, 1, 0, 0); initialsCtx.clearRect(0, 0, initialsCanvas.width, initialsCanvas.height); initialsCtx.restore(); initialsHasStrokes = false; }
+  function loadInitialsIntoPad(dataUrl) {
+    clearInitialsPadVisual();
+    if (dataUrl) {
+      var img = new Image();
+      img.onload = function () {
+        var rect = initialsCanvas.getBoundingClientRect(); var maxW = rect.width - 16, maxH = rect.height - 26;
+        var ratio = Math.min(maxW / img.width, maxH / img.height, 1); var dw = img.width * ratio, dh = img.height * ratio;
+        initialsCtx.drawImage(img, (rect.width - dw) / 2, rect.height - 20 - dh, dw, dh);
+        initialsHasStrokes = true;
+      };
+      img.src = dataUrl;
+    }
+  }
+  function ptFromInitialsEvent(e) { var rect = initialsCanvas.getBoundingClientRect(); var x = (e.touches ? e.touches[0].clientX : e.clientX) - rect.left; var y = (e.touches ? e.touches[0].clientY : e.clientY) - rect.top; return { x: x, y: y }; }
+  function startInitialsDraw(e) { e.preventDefault(); drawingInitials = true; lastInitialsPt = ptFromInitialsEvent(e); }
+  function moveInitialsDraw(e) {
+    if (!drawingInitials) return; e.preventDefault(); var pt = ptFromInitialsEvent(e);
+    initialsCtx.strokeStyle = "#1c2430"; initialsCtx.lineWidth = 2; initialsCtx.lineCap = "round"; initialsCtx.lineJoin = "round";
+    initialsCtx.beginPath(); initialsCtx.moveTo(lastInitialsPt.x, lastInitialsPt.y); initialsCtx.lineTo(pt.x, pt.y); initialsCtx.stroke();
+    lastInitialsPt = pt; initialsHasStrokes = true;
+  }
+  function endInitialsDraw() { drawingInitials = false; lastInitialsPt = null; }
+  initialsCanvas.addEventListener("pointerdown", startInitialsDraw); initialsCanvas.addEventListener("pointermove", moveInitialsDraw); window.addEventListener("pointerup", endInitialsDraw);
+  initialsCanvas.addEventListener("touchstart", startInitialsDraw, { passive: false }); initialsCanvas.addEventListener("touchmove", moveInitialsDraw, { passive: false }); initialsCanvas.addEventListener("touchend", endInitialsDraw);
+  document.getElementById("clearInitials").addEventListener("click", function () { clearInitialsPadVisual(); });
+  window.addEventListener("resize", function () { if (state.step === 3) sizeInitialsCanvas(); });
+
   // ---------- STEP 4: review + generate ----------
   function renderCertPreview() {
     saveCurrentRoleInputs();
     var n = state.pageIncluded.filter(Boolean).length;
     var initials = state.blocks.receiver.initials;
+    var initialsImgUrl = state.blocks.receiver.initialsDataUrl;
     var prep = state.blocks.preparer, recv = state.blocks.receiver, appr = state.blocks.approver;
     var rows = "<div><b>" + escapeHtml(prep.label) + ":</b> " + (prep.hasStrokes
       ? escapeHtml(prep.nameValue || "(no name entered)") + " — signed, page " + (prep.pageIndex + 1)
@@ -602,8 +648,8 @@
       (prep.sigDataUrl ? '<br><img class="sig-thumb" src="' + prep.sigDataUrl + '">' : "") + "</div>" +
       "<div><b>Receiver (approves &amp; signs):</b> " + (recv.hasStrokes ? escapeHtml(recv.nameValue || "(no name entered)") + " — signed as Approved-by on page " + (appr.pageIndex + 1) + ", and again on page " + (recv.pageIndex + 1) : "will sign as Approved-by on page " + (appr.pageIndex + 1) + ", and again on page " + (recv.pageIndex + 1)) +
       (recv.sigDataUrl ? '<br><img class="sig-thumb" src="' + recv.sigDataUrl + '">' : "") + "</div>";
-    var initialsLine = initials
-      ? "<b>Receiver initials:</b> " + escapeHtml(initials) + " — stamped on " + n + " page" + (n === 1 ? "" : "s") + (state.includePageStamp ? " (with a page/date stamp beside each)" : "")
+    var initialsLine = (initialsImgUrl || initials)
+      ? "<b>Receiver initials:</b> " + (initialsImgUrl ? "(drawn)" : escapeHtml(initials)) + " — stamped on " + n + " page" + (n === 1 ? "" : "s") + (state.includePageStamp ? " (with a page/date stamp beside each)" : "")
       : "<b>Receiver initials:</b> (none — no initial boxes will be stamped)";
     document.getElementById("certPreview").innerHTML =
       "<div><b>Document:</b> " + escapeHtml(state.fileName) + " (" + state.pageCount + " pages)</div>" +
@@ -836,18 +882,30 @@
     var pages = pdfDoc.getPages();
     var totalPages = pages.length;
     var initials = state.blocks.receiver.initials || "";
+    var initialsImgUrl = state.blocks.receiver.initialsDataUrl || null;
     var form = pdfDoc.getForm();
     var targetPages = [];
     pages.forEach(function (p, idx) { if (state.pageIncluded[idx]) targetPages.push({ page: p, num: idx + 1 }); });
 
-    if (targetPages.length > 0 && initials) {
-      var field = form.createTextField("receiver_initials");
-      field.setText(initials);
+    if (targetPages.length > 0 && (initialsImgUrl || initials)) {
+      // A drawn initials image takes priority over typed text - both are
+      // optional and either can be provided, but a hand-drawn mark is
+      // treated as the more deliberate choice when both are present.
+      var initialsPng = initialsImgUrl ? await pdfDoc.embedPng(dataUrlToBytes(initialsImgUrl)) : null;
+      var field = initialsPng ? null : form.createTextField("receiver_initials");
+      if (field) field.setText(initials);
       targetPages.forEach(function (tp) {
         var page = tp.page, num = tp.num;
         var w = page.getWidth(), h = page.getHeight();
         var x2 = w - MARGIN_RIGHT, x1 = x2 - BOX_W, y1 = MARGIN_BOTTOM;
-        field.addToPage(page, { x: x1, y: y1, width: BOX_W, height: BOX_H, font: font, textColor: rgb(0.1, 0.1, 0.15), backgroundColor: rgb(0.98, 0.94, 0.8), borderColor: rgb(0.7, 0.55, 0.05), borderWidth: 1 });
+        if (initialsPng) {
+          page.drawRectangle({ x: x1, y: y1, width: BOX_W, height: BOX_H, color: rgb(0.98, 0.94, 0.8), borderColor: rgb(0.7, 0.55, 0.05), borderWidth: 1 });
+          var ratio = Math.min((BOX_W - 6) / initialsPng.width, (BOX_H - 4) / initialsPng.height);
+          var dw = initialsPng.width * ratio, dh = initialsPng.height * ratio;
+          page.drawImage(initialsPng, { x: x1 + (BOX_W - dw) / 2, y: y1 + (BOX_H - dh) / 2, width: dw, height: dh });
+        } else {
+          field.addToPage(page, { x: x1, y: y1, width: BOX_W, height: BOX_H, font: font, textColor: rgb(0.1, 0.1, 0.15), backgroundColor: rgb(0.98, 0.94, 0.8), borderColor: rgb(0.7, 0.55, 0.05), borderWidth: 1 });
+        }
         if (state.includePageStamp) {
           var stampDate = blockSignedDate(state.blocks.receiver);
           var stampText = "Pg " + num + "/" + totalPages + " · " + stampDate;
@@ -855,7 +913,7 @@
           page.drawText(stampText, { x: x1 - 8 - stampWidth, y: y1 + 3, size: stampSize, font: font, color: rgb(0.35, 0.35, 0.4) });
         }
       });
-      field.setFontSize(8); form.updateFieldAppearances(font); form.flatten();
+      if (field) { field.setFontSize(8); form.updateFieldAppearances(font); form.flatten(); }
     }
 
     for (var k = 0; k < PLACEMENT_KEYS.length; k++) {
@@ -882,7 +940,7 @@
     var fmtBoth = function (iso) { return iso ? new Date(iso).toString() + "  (UTC: " + new Date(iso).toISOString() + ")" : "(not recorded)"; };
     var headerLines = [
       ["Document", state.fileName], ["Pages", String(state.pageCount)],
-      ["Receiver initials", initials ? (initials + "  (on " + targetPages.length + " page" + (targetPages.length === 1 ? "" : "s") + ")") : "(none)"],
+      ["Receiver initials", (initialsImgUrl || initials) ? ((initialsImgUrl ? "(drawn)" : initials) + "  (on " + targetPages.length + " page" + (targetPages.length === 1 ? "" : "s") + ")") : "(none)"],
       ["Prepared & signed", fmtBoth(prepBlock.signedAt)], ["Approved & signed by receiver", fmtBoth(recvBlock.signedAt)],
       ["Finalized & locked by preparer", fmtBoth(new Date().toISOString())],
       ["Completion ID", (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()))],
@@ -1064,7 +1122,7 @@
   // ---------- boot ----------
   async function bootApp() {
     renderStepPills();
-    var sigObserver = new MutationObserver(function () { if (document.getElementById("step3").style.display !== "none") sizeSigCanvas(); });
+    var sigObserver = new MutationObserver(function () { if (document.getElementById("step3").style.display !== "none") { sizeSigCanvas(); sizeInitialsCanvas(); } });
     sigObserver.observe(document.getElementById("step3"), { attributes: true, attributeFilter: ["style"] });
 
     await loadSession();

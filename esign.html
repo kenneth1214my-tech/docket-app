@@ -64,6 +64,8 @@
   .field-row input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   .sig-pad-wrap { border: 1px solid var(--border); border-radius: 10px; background: #fff; overflow: hidden; touch-action: none; position: relative; height: 160px; }
   .sig-pad-wrap canvas { display: block; width: 100%; height: 160px; cursor: crosshair; position: absolute; top: 0; left: 0; background: transparent; }
+  .sig-pad-wrap.compact { height: 90px; }
+  .sig-pad-wrap.compact canvas { height: 90px; }
   .sig-pad-hint-line { position: absolute; left: 16px; right: 16px; bottom: 26px; border-top: 1px solid #c7cdd6; pointer-events: none; }
   .sig-pad-hint-text { position: absolute; left: 16px; bottom: 8px; font-size: 11px; color: #c7cdd6; pointer-events: none; }
   .sig-tools { display: flex; gap: 8px; margin-top: 8px; }
@@ -181,10 +183,19 @@
       <div class="field-row" id="initialsFieldRow">
         <label for="initialsInput">Receiver initials (optional) <span id="pageCountLabel" style="font-weight:400;color:var(--text-dim);"></span></label>
         <input type="text" id="initialsInput" placeholder="e.g. KS" maxlength="6">
-        <div class="helper">Leave blank to skip the per-page initial boxes entirely.</div>
+        <div class="helper">Leave both blank to skip the per-page initial boxes entirely. Prefer to draw instead of type? Use the pad below — a drawing takes priority over typed text.</div>
+        <div class="sig-pad-wrap compact" style="margin-top:8px;">
+          <canvas id="initialsCanvas"></canvas>
+          <div class="sig-pad-hint-line" style="bottom:16px;"></div>
+          <div class="sig-pad-hint-text">Draw initials above the line</div>
+        </div>
+        <div class="sig-tools">
+          <button class="btn btn-ghost" type="button" id="clearInitials">Clear drawing</button>
+          <span class="helper" style="align-self:center;">Draw with mouse or finger.</span>
+        </div>
       </div>
     </div>
-    <label class="check" style="display:flex;align-items:center;gap:6px;margin:0 0 14px;font-size:12px;color:var(--text-dim);cursor:pointer;">
+    <label class="check" id="includeTitleCheckRow" style="display:flex;align-items:center;gap:6px;margin:0 0 14px;font-size:12px;color:var(--text-dim);cursor:pointer;">
       <input type="checkbox" id="includeTitleCheck"> Also include a title / position field
     </label>
     <div class="two-col" id="roleContentFields">
