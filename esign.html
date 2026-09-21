@@ -174,9 +174,6 @@
     <h2>3. Sign as each role</h2>
     <p class="sub">Two roles: the preparer, and the receiver — who also approves, so their name and signature land in both the "Approved by" spot and the final signature page.</p>
     <div class="steps" id="roleTabs" style="margin:0 0 18px;"></div>
-    <div id="preparerReceiverHint" class="note" style="display:none;">
-      The receiver's initials, signature, name and date are placed automatically based on matching labels found in the document. Click the <b>Receiver</b> tab above to review or drag them into the right spot before sending — it's optional, but worth a check.
-    </div>
     <div id="roleReceiverExtra" style="display:none;">
       <div id="receiverPrepareNote" class="note" style="display:none;">
         This tab is for <b>positioning</b> where the receiver's name, initials and signature will go — leave it blank and drag the markers below into place. The receiver fills in their own details after you send this.
@@ -239,6 +236,10 @@
     </div>
     <div class="place-hint" id="placeHintText">Tip: the signature, name, title and date markers are independent — drag each one separately.</div>
     <div class="note">A one-page completion certificate (all names, signatures, timestamps and a document fingerprint) is also appended to the end of the file as an audit record.</div>
+    <div id="preparerReceiverHint" class="note" style="display:none; text-align:center; padding:14px;">
+      <div>Done with your part? The receiver's initials, signature, name and date are placed automatically — worth a check before sending.</div>
+      <button type="button" class="btn btn-secondary" id="reviewReceiverPlacementBtn" style="margin-top:10px;">✏️ Review / adjust where the receiver's fields will land →</button>
+    </div>
     <div class="btn-row between">
       <button class="btn btn-ghost" id="roleBackBtn">← Back</button>
       <button class="btn btn-primary" id="roleNextBtn">Next →</button>

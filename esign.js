@@ -627,6 +627,7 @@
     }
   }
   document.getElementById("adjustReceiverPlacementLink").addEventListener("click", function () { goToStep(3); switchRole("receiver"); });
+  document.getElementById("reviewReceiverPlacementBtn").addEventListener("click", function () { switchRole("receiver"); });
 
   document.getElementById("startOverLink").addEventListener("click", function () {
     state.fileBytes = null; state.fileName = ""; state.fileHashHex = ""; state.pdfjsDoc = null; state.pageCount = 0; state.pageIncluded = [];
