@@ -755,12 +755,18 @@
       payload.action = "create";
       var result = await apiPost("/api/esign", payload);
       state.currentDocId = result.id;
-      setStatus("genStatus", result.emailSent
-        ? "Sent ✓ — the receiver has been emailed."
-        : "Sent ✓ — but the automatic email didn't go out (" + (result.emailReason || "unknown reason") + "). Use the copy box below.",
-        result.emailSent ? "ok" : "");
       history.replaceState(null, "", docLinkFor(state.currentDocId));
-      showAwaitingOwnerMode({ fileName: state.fileName, pageCount: state.pageCount, pageIncluded: state.pageIncluded, receiverEmail: receiverEmail }, result.emailSent, result.emailReason);
+      if (result.emailSent) {
+        // Nothing needs your attention - the email went out fine, so return
+        // to the document list instead of stopping on a detail screen.
+        setStatus("genStatus", "Sent ✓ — the receiver has been emailed. Returning to your documents…", "ok");
+        setTimeout(goToDashboard, 1400);
+      } else {
+        // The automatic email failed, so stay here: the fallback copy box
+        // on this screen is the only way to still get the link to them.
+        setStatus("genStatus", "Sent ✓ — but the automatic email didn't go out (" + (result.emailReason || "unknown reason") + "). Use the copy box below.", "");
+        showAwaitingOwnerMode({ fileName: state.fileName, pageCount: state.pageCount, pageIncluded: state.pageIncluded, receiverEmail: receiverEmail }, result.emailSent, result.emailReason);
+      }
     } catch (err) {
       console.error(err);
       setStatus("genStatus", "Something went wrong sending the document: " + (err.message || err), "err");
