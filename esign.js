@@ -388,6 +388,7 @@
     document.getElementById("roleNameInput").value = identity.nameValue || "";
     document.getElementById("initialsInput").value = key === "receiver" ? (identity.initials || "") : "";
     document.getElementById("roleReceiverExtra").style.display = key === "receiver" ? "" : "none";
+    document.getElementById("preparerReceiverHint").style.display = preparerIsOptionalHere ? "" : "none";
     document.getElementById("receiverPrepareNote").style.display = receiverIsOptionalHere ? "" : "none";
     document.getElementById("sigPadLabel").textContent = receiverIsOptionalHere ? "Draw signature (optional — just for previewing placement)" : (preparerIsOptionalHere ? "Draw signature (optional — only if you're also signing)" : "Draw signature");
     document.getElementById("placementToggleRow").style.display = key === "receiver" ? "" : "none";
@@ -599,18 +600,20 @@
 
     var sendBtn = document.getElementById("sendToReceiverBtn"), completeBtn = document.getElementById("completeBtn"),
       completeLocallyLink = document.getElementById("completeLocallyLink"), subtitle = document.getElementById("step4Subtitle"), submitNote = document.getElementById("receiverSubmitNote"),
-      composeWrap = document.getElementById("sendComposeFields");
+      composeWrap = document.getElementById("sendComposeFields"), adjustLink = document.getElementById("adjustReceiverPlacementLink");
     if (state.receiverOnlyMode) {
       sendBtn.style.display = "none"; completeLocallyLink.style.display = "none"; completeBtn.style.display = "";
       completeBtn.textContent = "Sign & send back to preparer →";
       subtitle.textContent = "This does not finalize the document yet — it goes back to the preparer to lock the final copy.";
       submitNote.style.display = "";
       composeWrap.style.display = "none";
+      adjustLink.style.display = "none";
     } else if (session) {
       sendBtn.style.display = ""; completeBtn.style.display = "none"; completeLocallyLink.style.display = "";
       subtitle.textContent = "Once sent, the receiver signs and it comes back to you to finalize and lock.";
       submitNote.style.display = "none";
       composeWrap.style.display = "";
+      adjustLink.style.display = "";
       var subjInput = document.getElementById("emailSubjectInput"), msgInput = document.getElementById("emailMessageInput");
       if (!subjInput.value) subjInput.value = "Please sign: " + state.fileName;
       if (!msgInput.value) msgInput.value = "Please review and sign the document: " + state.fileName + ".";
@@ -620,8 +623,10 @@
       subtitle.textContent = "Once you complete this, the initials field is flattened into static text on every page (no longer editable).";
       submitNote.style.display = "none";
       composeWrap.style.display = "none";
+      adjustLink.style.display = "none";
     }
   }
+  document.getElementById("adjustReceiverPlacementLink").addEventListener("click", function () { goToStep(3); switchRole("receiver"); });
 
   document.getElementById("startOverLink").addEventListener("click", function () {
     state.fileBytes = null; state.fileName = ""; state.fileHashHex = ""; state.pdfjsDoc = null; state.pageCount = 0; state.pageIncluded = [];
