@@ -61,6 +61,8 @@
   .field-row label { display: block; font-size: 13px; font-weight: 600; margin-bottom: 6px; }
   .field-row .helper { font-size: 12px; color: var(--text-dim); margin-top: 5px; }
   .field-row input[type="text"], .field-row input[type="email"] { width: 100%; padding: 10px 12px; border-radius: 8px; border: 1px solid var(--border); background: var(--bg); color: var(--text); font-size: 14px; }
+  #roleNameInput, #roleTitleInput, #initialsInput { text-transform: uppercase; }
+  #roleNameInput::placeholder, #roleTitleInput::placeholder, #initialsInput::placeholder { text-transform: none; }
   .field-row input:focus { outline: 2px solid var(--accent); outline-offset: 1px; }
   .sig-pad-wrap { border: 1px solid var(--border); border-radius: 10px; background: #fff; overflow: hidden; touch-action: none; position: relative; height: 160px; }
   .sig-pad-wrap canvas { display: block; width: 100%; height: 160px; cursor: crosshair; position: absolute; top: 0; left: 0; background: transparent; }

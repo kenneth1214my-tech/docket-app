@@ -293,13 +293,18 @@
       block.sigBoxW = w; block.sigBoxH = Math.round(w * 0.28); positionMarkers();
     });
     document.getElementById("roleNameInput").addEventListener("input", function (e) {
-      getIdentityBlock().nameValue = e.target.value;
-      if (state.activeBlockKey === "receiver") state.blocks.approver.nameValue = e.target.value;
+      // Standardized to uppercase, same convention as Docket's main
+      // contract form - the visible input keeps whatever case was typed
+      // (CSS text-transform shows it as caps), only the stored/stamped
+      // value is actually transformed, so the cursor never jumps.
+      var upper = e.target.value.toUpperCase();
+      getIdentityBlock().nameValue = upper;
+      if (state.activeBlockKey === "receiver") state.blocks.approver.nameValue = upper;
       refreshMarkersContent();
     });
     document.getElementById("initialsInput").addEventListener("input", function (e) {
       if (state.activeBlockKey !== "receiver") return;
-      state.blocks.receiver.initials = e.target.value.trim();
+      state.blocks.receiver.initials = e.target.value.trim().toUpperCase();
       state.blocks.approver.initials = state.blocks.receiver.initials;
     });
     document.getElementById("includeTitleCheck").addEventListener("change", function (e) {
@@ -310,8 +315,9 @@
       positionMarkers(); refreshMarkersContent();
     });
     document.getElementById("roleTitleInput").addEventListener("input", function (e) {
-      getIdentityBlock().titleValue = e.target.value;
-      if (state.activeBlockKey === "receiver") state.blocks.approver.titleValue = e.target.value;
+      var upper = e.target.value.toUpperCase();
+      getIdentityBlock().titleValue = upper;
+      if (state.activeBlockKey === "receiver") state.blocks.approver.titleValue = upper;
       refreshMarkersContent();
     });
   }
@@ -445,8 +451,8 @@
 
   function saveCurrentRoleInputs() {
     var key = state.activeBlockKey; if (!key) return;
-    var name = document.getElementById("roleNameInput").value.trim();
-    var titleValue = document.getElementById("roleTitleInput").value.trim();
+    var name = document.getElementById("roleNameInput").value.trim().toUpperCase();
+    var titleValue = document.getElementById("roleTitleInput").value.trim().toUpperCase();
     var includeTitle = document.getElementById("includeTitleCheck").checked;
     var identity = getIdentityBlock();
     identity.nameValue = name; identity.hasStrokes = sigHasStrokes;
@@ -455,7 +461,7 @@
     if (sigHasStrokes && !identity.signedAt) identity.signedAt = new Date().toISOString();
     if (!sigHasStrokes) identity.signedAt = null;
     if (key === "receiver") {
-      identity.initials = document.getElementById("initialsInput").value.trim();
+      identity.initials = document.getElementById("initialsInput").value.trim().toUpperCase();
       identity.initialsDataUrl = initialsHasStrokes ? initialsCanvas.toDataURL("image/png") : null;
       var approver = state.blocks.approver;
       approver.nameValue = name; approver.hasStrokes = sigHasStrokes; approver.sigDataUrl = identity.sigDataUrl;
