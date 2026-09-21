@@ -462,7 +462,8 @@
     // themselves, so their own tab is optional too, same as the receiver's.
     var mustSignNow = state.receiverOnlyMode;
     if (mustSignNow && !identity.hasStrokes) { alert('Please draw a signature for "' + (key === "receiver" ? "Receiver" : identity.label) + '" before continuing.'); return; }
-    if (state.receiverOnlyMode && !state.blocks.receiver.initials) { alert("Please enter the receiver's initials before continuing."); return; }
+    // Initials are optional too - an empty value just means no per-page
+    // initial boxes get stamped (see buildSignedPdf).
     // Preparer flow: signing (or optionally repositioning the receiver's
     // fields) always goes straight to Review & Send from here - it never
     // forces a stop on the other tab first.
@@ -593,9 +594,12 @@
       (prep.sigDataUrl ? '<br><img class="sig-thumb" src="' + prep.sigDataUrl + '">' : "") + "</div>" +
       "<div><b>Receiver (approves &amp; signs):</b> " + (recv.hasStrokes ? escapeHtml(recv.nameValue || "(no name entered)") + " — signed as Approved-by on page " + (appr.pageIndex + 1) + ", and again on page " + (recv.pageIndex + 1) : "will sign as Approved-by on page " + (appr.pageIndex + 1) + ", and again on page " + (recv.pageIndex + 1)) +
       (recv.sigDataUrl ? '<br><img class="sig-thumb" src="' + recv.sigDataUrl + '">' : "") + "</div>";
+    var initialsLine = initials
+      ? "<b>Receiver initials:</b> " + escapeHtml(initials) + " — stamped on " + n + " page" + (n === 1 ? "" : "s") + (state.includePageStamp ? " (with a page/date stamp beside each)" : "")
+      : "<b>Receiver initials:</b> (none — no initial boxes will be stamped)";
     document.getElementById("certPreview").innerHTML =
       "<div><b>Document:</b> " + escapeHtml(state.fileName) + " (" + state.pageCount + " pages)</div>" +
-      "<div><b>Receiver initials:</b> " + escapeHtml(initials) + " — stamped on " + n + " page" + (n === 1 ? "" : "s") + (state.includePageStamp ? " (with a page/date stamp beside each)" : "") + "</div>" +
+      "<div>" + initialsLine + "</div>" +
       rows + "<div><b>Original file fingerprint (SHA-256):</b><br>" + state.fileHashHex + "</div>";
 
     var sendBtn = document.getElementById("sendToReceiverBtn"), completeBtn = document.getElementById("completeBtn"),
@@ -828,7 +832,7 @@
     var targetPages = [];
     pages.forEach(function (p, idx) { if (state.pageIncluded[idx]) targetPages.push({ page: p, num: idx + 1 }); });
 
-    if (targetPages.length > 0) {
+    if (targetPages.length > 0 && initials) {
       var field = form.createTextField("receiver_initials");
       field.setText(initials);
       targetPages.forEach(function (tp) {
@@ -870,7 +874,7 @@
     var fmtBoth = function (iso) { return iso ? new Date(iso).toString() + "  (UTC: " + new Date(iso).toISOString() + ")" : "(not recorded)"; };
     var headerLines = [
       ["Document", state.fileName], ["Pages", String(state.pageCount)],
-      ["Receiver initials", initials + "  (on " + targetPages.length + " page" + (targetPages.length === 1 ? "" : "s") + ")"],
+      ["Receiver initials", initials ? (initials + "  (on " + targetPages.length + " page" + (targetPages.length === 1 ? "" : "s") + ")") : "(none)"],
       ["Prepared & signed", fmtBoth(prepBlock.signedAt)], ["Approved & signed by receiver", fmtBoth(recvBlock.signedAt)],
       ["Finalized & locked by preparer", fmtBoth(new Date().toISOString())],
       ["Completion ID", (crypto.randomUUID ? crypto.randomUUID() : String(Date.now()))],
