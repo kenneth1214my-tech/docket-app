@@ -390,7 +390,14 @@
     document.getElementById("roleReceiverExtra").style.display = key === "receiver" ? "" : "none";
     document.getElementById("preparerReceiverHint").style.display = preparerIsOptionalHere ? "" : "none";
     document.getElementById("receiverPrepareNote").style.display = receiverIsOptionalHere ? "" : "none";
-    document.getElementById("sigPadLabel").textContent = receiverIsOptionalHere ? "Draw signature (optional — just for previewing placement)" : (preparerIsOptionalHere ? "Draw signature (optional — only if you're also signing)" : "Draw signature");
+    // While the preparer is just positioning the receiver's fields, this is
+    // markers-only - the actual content (name/initials/title/signature) is
+    // something only the receiver ever fills in, so those inputs are hidden
+    // rather than shown "for preview" (which invited typing/drawing
+    // something that was never meant to be sent).
+    document.getElementById("initialsFieldRow").style.display = receiverIsOptionalHere ? "none" : "";
+    document.getElementById("roleContentFields").style.display = receiverIsOptionalHere ? "none" : "";
+    document.getElementById("sigPadLabel").textContent = preparerIsOptionalHere ? "Draw signature (optional — only if you're also signing)" : "Draw signature";
     document.getElementById("placementToggleRow").style.display = key === "receiver" ? "" : "none";
     document.getElementById("includeTitleCheck").checked = !!identity.includeTitle;
     document.getElementById("includeTitleCheck").style.display = state.receiverOnlyMode ? "none" : "";
@@ -510,7 +517,8 @@
   function refreshMarkersContent() {
     var identity = getIdentityBlock();
     var sigEl = document.getElementById("sigMarker");
-    sigEl.innerHTML = sigHasStrokes ? '<img src="' + sigCanvas.toDataURL("image/png") + '" alt="signature preview">' : '<span class="placeholder-label">Draw a signature above, then drag me here</span>';
+    var sigPlaceholder = (state.activeBlockKey === "receiver" && !state.receiverOnlyMode) ? "Signature — drag to position" : "Draw a signature above, then drag me here";
+    sigEl.innerHTML = sigHasStrokes ? '<img src="' + sigCanvas.toDataURL("image/png") + '" alt="signature preview">' : '<span class="placeholder-label">' + sigPlaceholder + '</span>';
     document.getElementById("nameMarkerText").textContent = identity.nameValue || (state.activeBlockKey === "receiver" ? "Receiver name" : identity.label + " name");
     document.getElementById("dateMarkerText").textContent = todayDisplay();
     document.getElementById("titleMarkerText").textContent = identity.titleValue || "Title";

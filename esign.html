@@ -176,23 +176,23 @@
     <div class="steps" id="roleTabs" style="margin:0 0 18px;"></div>
     <div id="roleReceiverExtra" style="display:none;">
       <div id="receiverPrepareNote" class="note" style="display:none;">
-        This tab is for <b>positioning</b> where the receiver's name, initials and signature will go — leave it blank and drag the markers below into place. The receiver fills in their own details after you send this.
+        This tab is for <b>positioning</b> only — drag the markers below into place. The receiver fills in their own initials, name, title and signature themselves after you send this; nothing typed or drawn here is sent to them.
       </div>
-      <div class="field-row">
+      <div class="field-row" id="initialsFieldRow">
         <label for="initialsInput">Receiver initials (optional) <span id="pageCountLabel" style="font-weight:400;color:var(--text-dim);"></span></label>
         <input type="text" id="initialsInput" placeholder="e.g. KS" maxlength="6">
         <div class="helper">Leave blank to skip the per-page initial boxes entirely.</div>
       </div>
     </div>
-    <div class="two-col">
+    <label class="check" style="display:flex;align-items:center;gap:6px;margin:0 0 14px;font-size:12px;color:var(--text-dim);cursor:pointer;">
+      <input type="checkbox" id="includeTitleCheck"> Also include a title / position field
+    </label>
+    <div class="two-col" id="roleContentFields">
       <div>
         <div class="field-row">
           <label id="nameFieldLabel" for="roleNameInput">Name</label>
           <input type="text" id="roleNameInput" placeholder="e.g. Kenneth Soo" maxlength="80">
         </div>
-        <label class="check" style="display:flex;align-items:center;gap:6px;margin:-8px 0 14px;font-size:12px;color:var(--text-dim);cursor:pointer;">
-          <input type="checkbox" id="includeTitleCheck"> Also include a title / position field
-        </label>
         <div class="field-row" id="titleFieldRow" style="display:none;">
           <label for="roleTitleInput">Title / position</label>
           <input type="text" id="roleTitleInput" placeholder="e.g. Managing Director" maxlength="80">
