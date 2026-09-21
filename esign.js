@@ -36,6 +36,7 @@
     preparerEmail: null, receiverEmail: null,
     currentDocId: null, receiverOnlyMode: false, step: 1,
     activeBlockKey: "preparer", activeReceiverPlacement: "approved",
+    includeFinalSignature: true, // whether the receiver's second, "final page" placement is used at all - see includeFinalSigCheck
     blocks: { preparer: blankBlock("Prepared by"), approver: blankBlock("Approved by (Receiver)"), receiver: blankBlock("Receiver") },
     bigPreviewScale: 1, bigPreviewPageWidth: 0, bigPreviewPageHeight: 0
   };
@@ -400,8 +401,12 @@
     document.getElementById("roleContentFields").style.display = receiverIsOptionalHere ? "none" : "";
     document.getElementById("sigPadLabel").textContent = preparerIsOptionalHere ? "Draw signature (optional — only if you're also signing)" : "Draw signature";
     document.getElementById("placementToggleRow").style.display = key === "receiver" ? "" : "none";
+    document.getElementById("includeFinalSigRow").style.display = (key === "receiver" && !state.receiverOnlyMode) ? "flex" : "none";
+    document.getElementById("includeFinalSigCheck").checked = state.includeFinalSignature;
+    document.getElementById("placeFinalBtn").style.display = state.includeFinalSignature ? "" : "none";
+    if (!state.includeFinalSignature && state.activeReceiverPlacement === "final") state.activeReceiverPlacement = "approved";
     document.getElementById("includeTitleCheck").checked = !!identity.includeTitle;
-    document.getElementById("includeTitleCheckRow").style.display = state.receiverOnlyMode ? "none" : "";
+    document.getElementById("includeTitleCheckRow").style.display = state.receiverOnlyMode ? "none" : "flex";
     document.getElementById("titleFieldRow").style.display = identity.includeTitle ? "" : "none";
     document.getElementById("roleTitleInput").value = identity.titleValue || "";
     // The preparer fixes every field's position before sending; the
@@ -429,6 +434,14 @@
   }
   document.getElementById("placeApprovedBtn").addEventListener("click", function () { state.activeReceiverPlacement = "approved"; updatePlacementToggleButtons(); syncPositionControlsToBlock(); renderBigPreview(getPositionBlock().pageIndex); });
   document.getElementById("placeFinalBtn").addEventListener("click", function () { state.activeReceiverPlacement = "final"; updatePlacementToggleButtons(); syncPositionControlsToBlock(); renderBigPreview(getPositionBlock().pageIndex); });
+  document.getElementById("includeFinalSigCheck").addEventListener("change", function (e) {
+    state.includeFinalSignature = e.target.checked;
+    document.getElementById("placeFinalBtn").style.display = state.includeFinalSignature ? "" : "none";
+    if (!state.includeFinalSignature && state.activeReceiverPlacement === "final") {
+      state.activeReceiverPlacement = "approved";
+      updatePlacementToggleButtons(); syncPositionControlsToBlock(); renderBigPreview(getPositionBlock().pageIndex);
+    }
+  });
 
   function saveCurrentRoleInputs() {
     var key = state.activeBlockKey; if (!key) return;
@@ -646,7 +659,7 @@
       ? escapeHtml(prep.nameValue || "(no name entered)") + " — signed, page " + (prep.pageIndex + 1)
       : "(not signed by preparer)") +
       (prep.sigDataUrl ? '<br><img class="sig-thumb" src="' + prep.sigDataUrl + '">' : "") + "</div>" +
-      "<div><b>Receiver (approves &amp; signs):</b> " + (recv.hasStrokes ? escapeHtml(recv.nameValue || "(no name entered)") + " — signed as Approved-by on page " + (appr.pageIndex + 1) + ", and again on page " + (recv.pageIndex + 1) : "will sign as Approved-by on page " + (appr.pageIndex + 1) + ", and again on page " + (recv.pageIndex + 1)) +
+      "<div><b>Receiver (approves &amp; signs):</b> " + (recv.hasStrokes ? escapeHtml(recv.nameValue || "(no name entered)") + " — signed" : "will sign") + " as Approved-by on page " + (appr.pageIndex + 1) + (state.includeFinalSignature ? ", and again on page " + (recv.pageIndex + 1) : "") +
       (recv.sigDataUrl ? '<br><img class="sig-thumb" src="' + recv.sigDataUrl + '">' : "") + "</div>";
     var initialsLine = (initialsImgUrl || initials)
       ? "<b>Receiver initials:</b> " + (initialsImgUrl ? "(drawn)" : escapeHtml(initials)) + " — stamped on " + n + " page" + (n === 1 ? "" : "s") + (state.includePageStamp ? " (with a page/date stamp beside each)" : "")
@@ -691,7 +704,7 @@
     state.fileBytes = null; state.fileName = ""; state.fileHashHex = ""; state.pdfjsDoc = null; state.pageCount = 0; state.pageIncluded = [];
     state.preparerEmail = null; state.receiverEmail = null; state.currentDocId = null;
     state.blocks = { preparer: blankBlock("Prepared by"), approver: blankBlock("Approved by (Receiver)"), receiver: blankBlock("Receiver") };
-    state.activeBlockKey = "preparer"; state.activeReceiverPlacement = "approved"; state.receiverOnlyMode = false;
+    state.activeBlockKey = "preparer"; state.activeReceiverPlacement = "approved"; state.receiverOnlyMode = false; state.includeFinalSignature = true;
     fileInput.value = "";
     document.getElementById("receiverEmailInput").value = ""; document.getElementById("preparerEmailInput").value = "";
     document.getElementById("emailSubjectInput").value = ""; document.getElementById("emailMessageInput").value = "";
@@ -749,6 +762,7 @@
       var payload = {
         fileName: state.fileName, pageCount: state.pageCount, fileHashHex: state.fileHashHex,
         originalBlobUrl: blobUrl, pageIncluded: state.pageIncluded, includePageStamp: state.includePageStamp,
+        includeFinalSignature: state.includeFinalSignature,
         blocks: state.blocks, receiverEmail: receiverEmail, preparerEmail: preparerEmail,
         subject: emailSubject || undefined, message: emailMessage || undefined
       };
@@ -924,6 +938,7 @@
 
     for (var k = 0; k < PLACEMENT_KEYS.length; k++) {
       var key = PLACEMENT_KEYS[k]; var block = state.blocks[key];
+      if (key === "receiver" && !state.includeFinalSignature) continue; // final-page placement turned off - "approver" still gets drawn
       if (!block.sigDataUrl || !block.sigPos) continue;
       var targetPage = pages[block.pageIndex];
       var pngBytes = dataUrlToBytes(block.sigDataUrl);
@@ -965,7 +980,7 @@
       var skey = SIGNER_TABS[s]; var sblock = state.blocks[skey];
       if (y < 130) break;
       var heading = skey === "receiver" ? "Receiver (approves & signs)" : sblock.label;
-      var pageNote = skey === "receiver" ? "Signed as Approved-by on page " + (state.blocks.approver.pageIndex + 1) + ", and again on page " + (sblock.pageIndex + 1) : "Signed on page " + (sblock.pageIndex + 1);
+      var pageNote = skey === "receiver" ? "Signed as Approved-by on page " + (state.blocks.approver.pageIndex + 1) + (state.includeFinalSignature ? ", and again on page " + (sblock.pageIndex + 1) : "") : "Signed on page " + (sblock.pageIndex + 1);
       certPage.drawText(heading + ":", { x: left, y: y, size: 11, font: boldFont }); y -= 15;
       var titleSuffix = (sblock.includeTitle && sblock.titleValue) ? "   ·   Title: " + sblock.titleValue : "";
       certPage.drawText("Name: " + (sblock.nameValue || "(not provided)") + titleSuffix + "   ·   " + pageNote, { x: left, y: y, size: 9.5, font: font, color: rgb(0.2, 0.2, 0.25) }); y -= 8;
@@ -1067,6 +1082,7 @@
     state.pageCount = state.pdfjsDoc.numPages;
     state.pageIncluded = data.pageIncluded && data.pageIncluded.length === state.pageCount ? data.pageIncluded.slice() : new Array(state.pageCount).fill(true);
     state.includePageStamp = data.includePageStamp !== false;
+    state.includeFinalSignature = data.includeFinalSignature !== false;
     state.preparerEmail = data.preparerEmail || null; state.receiverEmail = data.receiverEmail || null;
     state.blocks = {
       preparer: Object.assign(blankBlock("Prepared by"), data.blocks.preparer),

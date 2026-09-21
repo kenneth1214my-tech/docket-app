@@ -41,7 +41,8 @@ async function actionCreate(req, res) {
     id: newId(), status: "awaiting_receiver",
     fileName: body.fileName, pageCount: body.pageCount || body.pageIncluded.length, fileHashHex: body.fileHashHex || null,
     originalBlobUrl: body.originalBlobUrl, finalBlobUrl: null,
-    pageIncluded: body.pageIncluded, includePageStamp: body.includePageStamp !== false, blocks: body.blocks || {},
+    pageIncluded: body.pageIncluded, includePageStamp: body.includePageStamp !== false,
+    includeFinalSignature: body.includeFinalSignature !== false, blocks: body.blocks || {},
     receiverEmail: receiverEmail, preparerEmail: String(body.preparerEmail || session.email || "").trim() || null,
     preparerId: session.sub, preparerName: session.name || null,
     createdAt: now, sentAt: null, receiverSignedAt: null, completedAt: null, emailLog: []
