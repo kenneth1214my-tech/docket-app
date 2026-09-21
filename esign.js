@@ -42,7 +42,8 @@
 
   function blankBlock(label) {
     return { label: label, pageIndex: 0, nameValue: "", initials: "", sigDataUrl: null, hasStrokes: false, signedAt: null,
-      namePos: null, sigPos: null, datePos: null, nameBoxW: 130, nameBoxH: 14, sigBoxW: 120, sigBoxH: 34, dateBoxW: 80, dateBoxH: 14 };
+      namePos: null, sigPos: null, datePos: null, nameBoxW: 130, nameBoxH: 14, sigBoxW: 120, sigBoxH: 34, dateBoxW: 80, dateBoxH: 14,
+      includeTitle: false, titleValue: "", titlePos: null, titleBoxW: 110, titleBoxH: 14 };
   }
 
   // ---------- backend access ----------
@@ -159,6 +160,7 @@
       await buildPageGrid();
       await setupRoleBlocks();
       goToStep(2);
+      showStep2Phase("recipient");
     } catch (err) {
       console.error(err);
       setStatus("uploadStatus", "Couldn't read that PDF (" + err.message + "). Try a different file.", "err");
@@ -224,6 +226,14 @@
     document.getElementById("pageCountLabel").textContent = n > 0 ? "(will appear on " + n + " page" + (n === 1 ? "" : "s") + ")" : "(no pages selected)";
   }
 
+  function showStep2Phase(phase) {
+    state.step2Phase = phase;
+    document.getElementById("step2Recipient").style.display = phase === "recipient" ? "" : "none";
+    document.getElementById("step2Fields").style.display = phase === "fields" ? "" : "none";
+  }
+  document.getElementById("toFieldsPhase").addEventListener("click", function () { showStep2Phase("fields"); });
+  document.getElementById("backToRecipientPhase").addEventListener("click", function () { showStep2Phase("recipient"); });
+
   document.getElementById("backTo1").addEventListener("click", function () { document.getElementById("startOverLink").click(); });
   document.getElementById("toStep3").addEventListener("click", function () {
     if (state.pageIncluded.every(function (v) { return !v; })) { alert("Select at least one page to initial, or go back and pick a different document."); return; }
@@ -265,14 +275,14 @@
       var key = PLACEMENT_KEYS[k]; var block = state.blocks[key]; var guess = null;
       if (ROLE_KEYWORDS[key]) guess = await guessRolePositions(ROLE_KEYWORDS[key], block);
       if (!guess) guess = await defaultRolePositions(block, key === "receiver");
-      block.pageIndex = guess.pageIndex; block.namePos = guess.namePos; block.sigPos = guess.sigPos; block.datePos = guess.datePos;
+      block.pageIndex = guess.pageIndex; block.namePos = guess.namePos; block.sigPos = guess.sigPos; block.datePos = guess.datePos; block.titlePos = guess.titlePos;
     }
     renderRoleTabs();
     select.addEventListener("change", function () {
       var block = getPositionBlock();
       block.pageIndex = parseInt(select.value, 10);
       defaultRolePositions(block, false).then(function (pos) {
-        block.namePos = pos.namePos; block.sigPos = pos.sigPos; block.datePos = pos.datePos;
+        block.namePos = pos.namePos; block.sigPos = pos.sigPos; block.datePos = pos.datePos; block.titlePos = pos.titlePos;
         renderBigPreview(block.pageIndex);
       });
     });
@@ -289,6 +299,18 @@
       if (state.activeBlockKey !== "receiver") return;
       state.blocks.receiver.initials = e.target.value.trim();
       state.blocks.approver.initials = state.blocks.receiver.initials;
+    });
+    document.getElementById("includeTitleCheck").addEventListener("change", function (e) {
+      var identity = getIdentityBlock();
+      identity.includeTitle = e.target.checked;
+      if (state.activeBlockKey === "receiver") state.blocks.approver.includeTitle = e.target.checked;
+      document.getElementById("titleFieldRow").style.display = e.target.checked ? "" : "none";
+      positionMarkers(); refreshMarkersContent();
+    });
+    document.getElementById("roleTitleInput").addEventListener("input", function (e) {
+      getIdentityBlock().titleValue = e.target.value;
+      if (state.activeBlockKey === "receiver") state.blocks.approver.titleValue = e.target.value;
+      refreshMarkersContent();
     });
   }
 
@@ -319,9 +341,15 @@
           Math.abs(it.transform[4] - lx) < 100 && it.transform[5] < ly;
       });
       if (dateItem) { dateX = dateItem.transform[4]; dateY = dateItem.transform[5] - 2; }
+      var titleX = nameX, titleY = nameY - 20;
+      var titleItem = content.items.find(function (it) {
+        return it.str && it.str.toLowerCase().includes("title") &&
+          Math.abs(it.transform[4] - lx) < 100 && it.transform[5] < ly;
+      });
+      if (titleItem) { titleX = titleItem.transform[4]; titleY = titleItem.transform[5] - 2; }
       var clampX = function (v, w) { return Math.max(20, Math.min(v, vp.width - w - 20)); };
       var clampY = function (v, h) { return Math.max(20, Math.min(v, vp.height - h - 20)); };
-      return { pageIndex: i - 1, sigPos: { x: clampX(sigX, sigW), y: clampY(sigY, sigH) }, namePos: { x: clampX(nameX, nameW), y: clampY(nameY, nameH) }, datePos: { x: clampX(dateX, block.dateBoxW), y: clampY(dateY, block.dateBoxH) } };
+      return { pageIndex: i - 1, sigPos: { x: clampX(sigX, sigW), y: clampY(sigY, sigH) }, namePos: { x: clampX(nameX, nameW), y: clampY(nameY, nameH) }, datePos: { x: clampX(dateX, block.dateBoxW), y: clampY(dateY, block.dateBoxH) }, titlePos: { x: clampX(titleX, block.titleBoxW), y: clampY(titleY, block.titleBoxH) } };
     }
     return null;
   }
@@ -330,7 +358,7 @@
     var page = await state.pdfjsDoc.getPage(pageIndex + 1);
     var vp = page.getViewport({ scale: 1 });
     var baseX = (vp.width - block.sigBoxW) / 2, baseY = vp.height * 0.2;
-    return { pageIndex: pageIndex, sigPos: { x: baseX, y: baseY + 24 }, namePos: { x: baseX, y: baseY + 6 }, datePos: { x: baseX + block.sigBoxW + 12, y: baseY + 10 } };
+    return { pageIndex: pageIndex, sigPos: { x: baseX, y: baseY + 24 }, namePos: { x: baseX, y: baseY + 6 }, datePos: { x: baseX + block.sigBoxW + 12, y: baseY + 10 }, titlePos: { x: baseX, y: baseY - 12 } };
   }
 
   function renderRoleTabs() {
@@ -354,13 +382,18 @@
     var identity = getIdentityBlock();
     renderRoleTabs();
     var receiverIsOptionalHere = key === "receiver" && !state.receiverOnlyMode;
-    document.getElementById("nameFieldLabel").textContent = (key === "receiver" ? "Receiver" : identity.label) + " — name" + (receiverIsOptionalHere ? " (optional — receiver fills this in)" : "");
+    var preparerIsOptionalHere = key === "preparer" && !state.receiverOnlyMode;
+    var nameOptionalSuffix = receiverIsOptionalHere ? " (optional — receiver fills this in)" : (preparerIsOptionalHere ? " (optional — only needed if you're also signing)" : "");
+    document.getElementById("nameFieldLabel").textContent = (key === "receiver" ? "Receiver" : identity.label) + " — name" + nameOptionalSuffix;
     document.getElementById("roleNameInput").value = identity.nameValue || "";
     document.getElementById("initialsInput").value = key === "receiver" ? (identity.initials || "") : "";
     document.getElementById("roleReceiverExtra").style.display = key === "receiver" ? "" : "none";
     document.getElementById("receiverPrepareNote").style.display = receiverIsOptionalHere ? "" : "none";
-    document.getElementById("sigPadLabel").textContent = receiverIsOptionalHere ? "Draw signature (optional — just for previewing placement)" : "Draw signature";
+    document.getElementById("sigPadLabel").textContent = receiverIsOptionalHere ? "Draw signature (optional — just for previewing placement)" : (preparerIsOptionalHere ? "Draw signature (optional — only if you're also signing)" : "Draw signature");
     document.getElementById("placementToggleRow").style.display = key === "receiver" ? "" : "none";
+    document.getElementById("includeTitleCheck").checked = !!identity.includeTitle;
+    document.getElementById("titleFieldRow").style.display = identity.includeTitle ? "" : "none";
+    document.getElementById("roleTitleInput").value = identity.titleValue || "";
     updatePlacementToggleButtons();
     loadSignatureIntoPad(identity.sigDataUrl);
     updateRoleNextButton();
@@ -382,8 +415,11 @@
   function saveCurrentRoleInputs() {
     var key = state.activeBlockKey; if (!key) return;
     var name = document.getElementById("roleNameInput").value.trim();
+    var titleValue = document.getElementById("roleTitleInput").value.trim();
+    var includeTitle = document.getElementById("includeTitleCheck").checked;
     var identity = getIdentityBlock();
     identity.nameValue = name; identity.hasStrokes = sigHasStrokes;
+    identity.titleValue = titleValue; identity.includeTitle = includeTitle;
     identity.sigDataUrl = sigHasStrokes ? sigCanvas.toDataURL("image/png") : null;
     if (sigHasStrokes && !identity.signedAt) identity.signedAt = new Date().toISOString();
     if (!sigHasStrokes) identity.signedAt = null;
@@ -392,6 +428,7 @@
       var approver = state.blocks.approver;
       approver.nameValue = name; approver.hasStrokes = sigHasStrokes; approver.sigDataUrl = identity.sigDataUrl;
       approver.initials = identity.initials; approver.signedAt = identity.signedAt;
+      approver.titleValue = titleValue; approver.includeTitle = includeTitle;
     }
   }
   function updateRoleNextButton() {
@@ -411,7 +448,10 @@
   document.getElementById("roleNextBtn").addEventListener("click", function () {
     saveCurrentRoleInputs();
     var identity = getIdentityBlock(); var key = state.activeBlockKey;
-    var mustSignNow = key === "preparer" || state.receiverOnlyMode;
+    // Only the receiver-signing flow (receiverOnlyMode) forces a signature -
+    // a preparer sending a document out isn't necessarily a signer on it
+    // themselves, so their own tab is optional too, same as the receiver's.
+    var mustSignNow = state.receiverOnlyMode;
     if (mustSignNow && !identity.hasStrokes) { alert('Please draw a signature for "' + (key === "receiver" ? "Receiver" : identity.label) + '" before continuing.'); return; }
     if (state.receiverOnlyMode && !state.blocks.receiver.initials) { alert("Please enter the receiver's initials before continuing."); return; }
     // Preparer flow: signing (or optionally repositioning the receiver's
@@ -447,6 +487,15 @@
     var dateEl = document.getElementById("dateMarker");
     dateEl.style.width = (block.dateBoxW * state.bigPreviewScale) + "px"; dateEl.style.height = (block.dateBoxH * state.bigPreviewScale) + "px";
     dateEl.style.left = ptToCssLeft(block.datePos.x) + "px"; dateEl.style.top = ptToCssTop(block.datePos.y, block.dateBoxH) + "px";
+    var identity = getIdentityBlock();
+    var titleEl = document.getElementById("titleMarker");
+    if (identity.includeTitle && block.titlePos) {
+      titleEl.style.display = "";
+      titleEl.style.width = (block.titleBoxW * state.bigPreviewScale) + "px"; titleEl.style.height = (block.titleBoxH * state.bigPreviewScale) + "px";
+      titleEl.style.left = ptToCssLeft(block.titlePos.x) + "px"; titleEl.style.top = ptToCssTop(block.titlePos.y, block.titleBoxH) + "px";
+    } else {
+      titleEl.style.display = "none";
+    }
   }
   function refreshMarkersContent() {
     var identity = getIdentityBlock();
@@ -454,6 +503,7 @@
     sigEl.innerHTML = sigHasStrokes ? '<img src="' + sigCanvas.toDataURL("image/png") + '" alt="signature preview">' : '<span class="placeholder-label">Draw a signature above, then drag me here</span>';
     document.getElementById("nameMarkerText").textContent = identity.nameValue || (state.activeBlockKey === "receiver" ? "Receiver name" : identity.label + " name");
     document.getElementById("dateMarkerText").textContent = todayDisplay();
+    document.getElementById("titleMarkerText").textContent = identity.titleValue || "Title";
   }
   function makeMarkerDraggable(el, posKey, boxWKey, boxHKey) {
     var dragging = false, startPx = null, startPos = null;
@@ -474,6 +524,7 @@
   makeMarkerDraggable(document.getElementById("sigMarker"), "sigPos", "sigBoxW", "sigBoxH");
   makeMarkerDraggable(document.getElementById("nameMarker"), "namePos", "nameBoxW", "nameBoxH");
   makeMarkerDraggable(document.getElementById("dateMarker"), "datePos", "dateBoxW", "dateBoxH");
+  makeMarkerDraggable(document.getElementById("titleMarker"), "titlePos", "titleBoxW", "titleBoxH");
   window.addEventListener("resize", function () { if (state.step === 3 && state.pdfjsDoc) renderBigPreview(getPositionBlock().pageIndex); });
 
   // ---------- signature pad ----------
@@ -521,7 +572,9 @@
     var n = state.pageIncluded.filter(Boolean).length;
     var initials = state.blocks.receiver.initials;
     var prep = state.blocks.preparer, recv = state.blocks.receiver, appr = state.blocks.approver;
-    var rows = "<div><b>" + escapeHtml(prep.label) + ":</b> " + escapeHtml(prep.nameValue || "(no name entered)") + " — signed, page " + (prep.pageIndex + 1) +
+    var rows = "<div><b>" + escapeHtml(prep.label) + ":</b> " + (prep.hasStrokes
+      ? escapeHtml(prep.nameValue || "(no name entered)") + " — signed, page " + (prep.pageIndex + 1)
+      : "(not signed by preparer)") +
       (prep.sigDataUrl ? '<br><img class="sig-thumb" src="' + prep.sigDataUrl + '">' : "") + "</div>" +
       "<div><b>Receiver (approves &amp; signs):</b> " + (recv.hasStrokes ? escapeHtml(recv.nameValue || "(no name entered)") + " — signed as Approved-by on page " + (appr.pageIndex + 1) + ", and again on page " + (recv.pageIndex + 1) : "will sign as Approved-by on page " + (appr.pageIndex + 1) + ", and again on page " + (recv.pageIndex + 1)) +
       (recv.sigDataUrl ? '<br><img class="sig-thumb" src="' + recv.sigDataUrl + '">' : "") + "</div>";
@@ -531,21 +584,28 @@
       rows + "<div><b>Original file fingerprint (SHA-256):</b><br>" + state.fileHashHex + "</div>";
 
     var sendBtn = document.getElementById("sendToReceiverBtn"), completeBtn = document.getElementById("completeBtn"),
-      completeLocallyLink = document.getElementById("completeLocallyLink"), subtitle = document.getElementById("step4Subtitle"), submitNote = document.getElementById("receiverSubmitNote");
+      completeLocallyLink = document.getElementById("completeLocallyLink"), subtitle = document.getElementById("step4Subtitle"), submitNote = document.getElementById("receiverSubmitNote"),
+      composeWrap = document.getElementById("sendComposeFields");
     if (state.receiverOnlyMode) {
       sendBtn.style.display = "none"; completeLocallyLink.style.display = "none"; completeBtn.style.display = "";
       completeBtn.textContent = "Sign & send back to preparer →";
       subtitle.textContent = "This does not finalize the document yet — it goes back to the preparer to lock the final copy.";
       submitNote.style.display = "";
+      composeWrap.style.display = "none";
     } else if (session) {
       sendBtn.style.display = ""; completeBtn.style.display = "none"; completeLocallyLink.style.display = "";
       subtitle.textContent = "Once sent, the receiver signs and it comes back to you to finalize and lock.";
       submitNote.style.display = "none";
+      composeWrap.style.display = "";
+      var subjInput = document.getElementById("emailSubjectInput"), msgInput = document.getElementById("emailMessageInput");
+      if (!subjInput.value) subjInput.value = "Please sign: " + state.fileName;
+      if (!msgInput.value) msgInput.value = "Please review and sign the document: " + state.fileName + ".";
     } else {
       sendBtn.style.display = "none"; completeLocallyLink.style.display = "none"; completeBtn.style.display = "";
       completeBtn.textContent = "Complete & download PDF";
       subtitle.textContent = "Once you complete this, the initials field is flattened into static text on every page (no longer editable).";
       submitNote.style.display = "none";
+      composeWrap.style.display = "none";
     }
   }
 
@@ -556,6 +616,7 @@
     state.activeBlockKey = "preparer"; state.activeReceiverPlacement = "approved"; state.receiverOnlyMode = false;
     fileInput.value = "";
     document.getElementById("receiverEmailInput").value = ""; document.getElementById("preparerEmailInput").value = "";
+    document.getElementById("emailSubjectInput").value = ""; document.getElementById("emailMessageInput").value = "";
     setStatus("genStatus", "", "");
     if (urlDocId()) { var url = new URL(window.location.href); url.searchParams.delete("id"); history.replaceState(null, "", url.toString()); }
     goToStep(1);
@@ -603,12 +664,15 @@
     saveCurrentRoleInputs();
     var receiverEmail = document.getElementById("receiverEmailInput").value.trim();
     var preparerEmail = document.getElementById("preparerEmailInput").value.trim();
+    var emailSubject = document.getElementById("emailSubjectInput").value.trim();
+    var emailMessage = document.getElementById("emailMessageInput").value.trim();
     try {
       var blobUrl = await uploadFileToBackend(new Blob([state.fileBytes], { type: "application/pdf" }), state.fileName);
       var payload = {
         fileName: state.fileName, pageCount: state.pageCount, fileHashHex: state.fileHashHex,
         originalBlobUrl: blobUrl, pageIncluded: state.pageIncluded, includePageStamp: state.includePageStamp,
-        blocks: state.blocks, receiverEmail: receiverEmail, preparerEmail: preparerEmail
+        blocks: state.blocks, receiverEmail: receiverEmail, preparerEmail: preparerEmail,
+        subject: emailSubject || undefined, message: emailMessage || undefined
       };
       payload.action = "create";
       var result = await apiPost("/api/esign", payload);
@@ -774,6 +838,7 @@
       targetPage.drawImage(pngImage, { x: dx, y: dy, width: dw, height: dh });
       if (block.nameValue && block.namePos) targetPage.drawText(block.nameValue, { x: block.namePos.x, y: block.namePos.y + 2, size: 10, font: font, color: rgb(0.1, 0.1, 0.15) });
       if (block.datePos) targetPage.drawText(blockSignedDate(block), { x: block.datePos.x, y: block.datePos.y + 2, size: 9, font: font, color: rgb(0.1, 0.1, 0.15) });
+      if (block.includeTitle && block.titleValue && block.titlePos) targetPage.drawText(block.titleValue, { x: block.titlePos.x, y: block.titlePos.y + 2, size: 9, font: font, color: rgb(0.1, 0.1, 0.15) });
     }
 
     var certPage = pdfDoc.addPage([612, 792]);
@@ -806,7 +871,8 @@
       var heading = skey === "receiver" ? "Receiver (approves & signs)" : sblock.label;
       var pageNote = skey === "receiver" ? "Signed as Approved-by on page " + (state.blocks.approver.pageIndex + 1) + ", and again on page " + (sblock.pageIndex + 1) : "Signed on page " + (sblock.pageIndex + 1);
       certPage.drawText(heading + ":", { x: left, y: y, size: 11, font: boldFont }); y -= 15;
-      certPage.drawText("Name: " + (sblock.nameValue || "(not provided)") + "   ·   " + pageNote, { x: left, y: y, size: 9.5, font: font, color: rgb(0.2, 0.2, 0.25) }); y -= 8;
+      var titleSuffix = (sblock.includeTitle && sblock.titleValue) ? "   ·   Title: " + sblock.titleValue : "";
+      certPage.drawText("Name: " + (sblock.nameValue || "(not provided)") + titleSuffix + "   ·   " + pageNote, { x: left, y: y, size: 9.5, font: font, color: rgb(0.2, 0.2, 0.25) }); y -= 8;
       if (sblock.sigDataUrl) {
         var pb = dataUrlToBytes(sblock.sigDataUrl); var pi = await pdfDoc.embedPng(pb);
         var maxW = 150, maxH = 42; var r2 = Math.min(maxW / pi.width, maxH / pi.height);
@@ -959,6 +1025,7 @@
       state.receiverOnlyMode = false;
       await buildPageGrid();
       goToStep(2);
+      showStep2Phase("fields");
     } catch (err) { console.error(err); alert("Couldn't load the prepared document for editing: " + (err.message || err)); }
   });
 

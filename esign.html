@@ -95,6 +95,8 @@
   .drag-marker .date-text { font-size: 11px; color: #2a2a2a; pointer-events: none; white-space: nowrap; }
   .drag-marker.name-marker { border-color: var(--ok); background: rgba(30,142,90,0.1); }
   .drag-marker .name-text { font-size: 11px; color: #1c2430; font-weight: 600; pointer-events: none; white-space: nowrap; }
+  .drag-marker.title-marker { border-color: #8855dd; background: rgba(136,85,221,0.1); }
+  .drag-marker .title-text { font-size: 11px; color: #1c2430; pointer-events: none; white-space: nowrap; font-style: italic; }
   .place-hint { font-size: 12px; color: var(--text-dim); text-align: center; margin-top: 8px; }
   .doc-row { display: flex; align-items: center; gap: 12px; padding: 12px 4px; border-bottom: 1px solid var(--border); cursor: pointer; border-radius: 8px; }
   .doc-row:hover { background: var(--accent-dim); }
@@ -137,23 +139,33 @@
   </div>
 
   <div class="card" id="step2" style="display:none;">
-    <h2>2. Confirm where initials go</h2>
-    <p class="sub">An initial box is placed bottom-right on every page by default. Untick any page that shouldn't be initialed (e.g. a cover page).</p>
     <div class="file-summary" id="fileSummary"></div>
-    <div class="field-row">
-      <label for="receiverEmailInput">Receiver's email</label>
-      <input type="email" id="receiverEmailInput" placeholder="e.g. receiver@example.com">
-      <div class="helper">They'll get a real email with a signing link the moment you send this.</div>
+    <div id="step2Recipient">
+      <h2>2. Who is this for?</h2>
+      <p class="sub">Add the receiver's email. You'll place fields on the document next.</p>
+      <div class="field-row">
+        <label for="receiverEmailInput">Receiver's email</label>
+        <input type="email" id="receiverEmailInput" placeholder="e.g. receiver@example.com">
+        <div class="helper">They'll get a real email with a signing link the moment you send this.</div>
+      </div>
+      <div class="field-row">
+        <label for="preparerEmailInput">Your email (for the "receiver signed" notification)</label>
+        <input type="email" id="preparerEmailInput" placeholder="e.g. you@kingston.edu.sg">
+      </div>
+      <div class="btn-row between">
+        <button class="btn btn-ghost" id="backTo1">← Choose a different file</button>
+        <button class="btn btn-primary" id="toFieldsPhase">Continue →</button>
+      </div>
     </div>
-    <div class="field-row">
-      <label for="preparerEmailInput">Your email (for the "receiver signed" notification)</label>
-      <input type="email" id="preparerEmailInput" placeholder="e.g. you@kingston.edu.sg">
-    </div>
-    <label class="check" style="display:flex;align-items:center;gap:6px;margin-bottom:12px;font-size:12.5px;color:var(--text-dim);"><input type="checkbox" id="includePageStamp" checked> Also stamp a page number + date next to the initials on each selected page</label>
-    <div class="page-grid" id="pageGrid"></div>
-    <div class="btn-row between">
-      <button class="btn btn-ghost" id="backTo1">← Choose a different file</button>
-      <button class="btn btn-primary" id="toStep3">Continue to signing →</button>
+    <div id="step2Fields" style="display:none;">
+      <h2 style="font-size:15px;">Confirm where initials go</h2>
+      <p class="sub">An initial box is placed bottom-right on every page by default. Untick any page that shouldn't be initialed (e.g. a cover page).</p>
+      <label class="check" style="display:flex;align-items:center;gap:6px;margin-bottom:12px;font-size:12.5px;color:var(--text-dim);"><input type="checkbox" id="includePageStamp" checked> Also stamp a page number + date next to the initials on each selected page</label>
+      <div class="page-grid" id="pageGrid"></div>
+      <div class="btn-row between">
+        <button class="btn btn-ghost" id="backToRecipientPhase">← Back</button>
+        <button class="btn btn-primary" id="toStep3">Continue to signing →</button>
+      </div>
     </div>
   </div>
 
@@ -175,6 +187,13 @@
         <div class="field-row">
           <label id="nameFieldLabel" for="roleNameInput">Name</label>
           <input type="text" id="roleNameInput" placeholder="e.g. Kenneth Soo" maxlength="80">
+        </div>
+        <label class="check" style="display:flex;align-items:center;gap:6px;margin:-8px 0 14px;font-size:12px;color:var(--text-dim);cursor:pointer;">
+          <input type="checkbox" id="includeTitleCheck"> Also include a title / position field
+        </label>
+        <div class="field-row" id="titleFieldRow" style="display:none;">
+          <label for="roleTitleInput">Title / position</label>
+          <input type="text" id="roleTitleInput" placeholder="e.g. Managing Director" maxlength="80">
         </div>
         <div class="helper" id="dateAutoNote">Today's date (<span id="todayDisplaySpan"></span>) is stamped automatically — drag it into place below.</div>
       </div>
@@ -212,8 +231,9 @@
       <div class="drag-marker" id="sigMarker"><span class="placeholder-label">Draw a signature above, then drag me here</span></div>
       <div class="drag-marker name-marker" id="nameMarker"><span class="name-text" id="nameMarkerText">Name</span></div>
       <div class="drag-marker date-marker" id="dateMarker"><span class="date-text" id="dateMarkerText"></span></div>
+      <div class="drag-marker title-marker" id="titleMarker" style="display:none;"><span class="title-text" id="titleMarkerText">Title</span></div>
     </div>
-    <div class="place-hint">Tip: the signature, name and date markers are independent — drag each one separately.</div>
+    <div class="place-hint">Tip: the signature, name, title and date markers are independent — drag each one separately.</div>
     <div class="note">A one-page completion certificate (all names, signatures, timestamps and a document fingerprint) is also appended to the end of the file as an audit record.</div>
     <div class="btn-row between">
       <button class="btn btn-ghost" id="roleBackBtn">← Back</button>
@@ -224,6 +244,16 @@
   <div class="card" id="step4" style="display:none;">
     <h2>4. Review &amp; finish</h2>
     <p class="sub" id="step4Subtitle"></p>
+    <div id="sendComposeFields" style="display:none;">
+      <div class="field-row">
+        <label for="emailSubjectInput">Email subject</label>
+        <input type="text" id="emailSubjectInput" maxlength="200">
+      </div>
+      <div class="field-row">
+        <label for="emailMessageInput">Message</label>
+        <textarea id="emailMessageInput" rows="4" style="width:100%;padding:10px 12px;border-radius:8px;border:1px solid var(--border);background:var(--bg);color:var(--text);font-size:14px;font-family:inherit;box-sizing:border-box;"></textarea>
+      </div>
+    </div>
     <div class="cert-preview" id="certPreview"></div>
     <div id="receiverSubmitNote" class="note" style="display:none;">This sends your signature, initials and name back to the preparer by real email — they'll review it and send you the final locked copy once it's confirmed.</div>
     <div class="status-line" id="genStatus"></div>

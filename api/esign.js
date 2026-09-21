@@ -48,13 +48,16 @@ async function actionCreate(req, res) {
   };
 
   var link = baseUrl(req) + "/esign.html?id=" + record.id;
-  var subject = "Please sign: " + record.fileName;
+  var subject = String(body.subject || "").trim() || ("Please sign: " + record.fileName);
+  var message = String(body.message || "").trim() ||
+    ((record.preparerName || "A Docket user") + " has sent you a document to review and sign: " + record.fileName + ".");
+  record.emailSubject = subject; record.emailMessage = message; // kept for the review screen if the request is edited later
   var html =
     "<div style=\"font-family:sans-serif;color:#222;\"><p>Hi,</p>" +
-    "<p>" + escapeHtml(record.preparerName || "A Docket user") + " has sent you a document to review and sign: <b>" + escapeHtml(record.fileName) + "</b>.</p>" +
+    "<p>" + escapeHtml(message).replace(/\n/g, "<br>") + "</p>" +
     "<p><a href=\"" + link + "\" style=\"display:inline-block;padding:10px 18px;background:#2952e3;color:#fff;text-decoration:none;border-radius:6px;\">Open &amp; sign</a></p>" +
     "<p style=\"color:#888;font-size:12px;\">Or copy this link: " + link + "</p></div>";
-  var text = "Please review and sign: " + record.fileName + "\n\nOpen this link to sign it:\n" + link;
+  var text = message + "\n\nOpen this link to sign it:\n" + link;
 
   var emailResult = await sendResendEmail({ to: receiverEmail, subject: subject, html: html, text: text });
   record.sentAt = now;
