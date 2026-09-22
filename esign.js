@@ -43,7 +43,7 @@
 
   function blankBlock(label) {
     return { label: label, pageIndex: 0, nameValue: "", initials: "", initialsDataUrl: null, sigDataUrl: null, hasStrokes: false, signedAt: null,
-      namePos: null, sigPos: null, datePos: null, nameBoxW: 130, nameBoxH: 14, sigBoxW: 140, sigBoxH: 112, dateBoxW: 80, dateBoxH: 14,
+      namePos: null, sigPos: null, datePos: null, nameBoxW: 130, nameBoxH: 14, sigBoxW: 120, sigBoxH: 80, dateBoxW: 80, dateBoxH: 14,
       includeTitle: false, titleValue: "", titlePos: null, titleBoxW: 110, titleBoxH: 14 };
   }
 
@@ -290,7 +290,7 @@
     });
     document.getElementById("sigSizeSlider").addEventListener("input", function (e) {
       var w = parseInt(e.target.value, 10); var block = getPositionBlock();
-      block.sigBoxW = w; block.sigBoxH = Math.round(w * 0.8); positionMarkers();
+      block.sigBoxW = w; block.sigBoxH = Math.round(w * (2 / 3)); positionMarkers();
     });
     document.getElementById("roleNameInput").addEventListener("input", function (e) {
       // Standardized to uppercase, same convention as Docket's main
